@@ -1,2 +1,3 @@
 pandas
 lark
+nemo_library

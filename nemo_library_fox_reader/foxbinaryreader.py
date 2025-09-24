@@ -2,6 +2,10 @@
 foxbinaryreader.py: Utility for reading binary data from FOX files.
 """
 
+import struct
+from typing import BinaryIO
+
+
 class BinaryReader:
     """
     A helper class for reading various binary data types from a binary stream, specifically for FOX file parsing.
