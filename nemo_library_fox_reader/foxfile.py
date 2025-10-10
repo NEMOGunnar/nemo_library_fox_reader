@@ -8,10 +8,12 @@ from typing import TypeVar
 import pandas as pd
 
 from nemo_library_fox_reader.foxattribute import FoxAttribute
-from nemo_library_fox_reader.foxbinaryreader import BinaryReader
+from nemo_library_fox_reader.foxbinaryreader import FoxBinaryReader
 from nemo_library_fox_reader.foxglobal import FoxGlobal
-from nemo_library_fox_reader.utils import FOXAttributeType
+from nemo_library.utils.utils import FOXAttributeType
 
+from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
+from nemo_library_fox_reader.foxstatisticsinfo import IssueType
 
 MINIMUM_FOX_VERSION = "FOX2006/11/08"
 
@@ -24,18 +26,22 @@ class FOXFile:
     Class for reading FOX files and importing their data and metadata into NEMO projects.
     """
 
-    def __init__(self, file_path: str):
+    def __init__(self, file_path: str, foxReaderInfo: FOXReaderInfo | None = None):
         """
         Initialize FOXReader with the given file path.
         Args:
             file_path (str): Path to the FOX file to be read.
+            foxReaderInfo: Stores statistics information about the implementation of InfoZoom features.
         """
         self.file_path = file_path
         self.file = open(file_path, "rb")
-        self.binary_reader = BinaryReader(self.file)
+        self.binary_reader = FoxBinaryReader(self.file, foxReaderInfo=foxReaderInfo)
         self.global_information = None
         self.attributes = None
         self.data_frame = pd.DataFrame()
+        self.foxReaderInfo = foxReaderInfo
+        # logging.info(f"FOXFile __init__ foxReaderInfo={self.foxReaderInfo}")
+
 
     def read(self) -> pd.DataFrame:
         """
@@ -46,6 +52,10 @@ class FOXFile:
             ValueError: If the file format is unsupported or does not use Unicode.
         """
         self.global_information = self._read_global_part_1()
+
+        if self.foxReaderInfo:
+            self.foxReaderInfo.current_fox_version = self.global_information.version_short
+
         self.attributes = self._read_attributes(self.global_information)
         self.global_information = self._read_global_part_2(self.global_information)
         self.data_frame = self._create_dataframe(
@@ -70,7 +80,7 @@ class FOXFile:
             columns = []
             values = []
             for attr in attributes:
-                if attr.attribute_type == FOXAttributeType.Normal:
+                if attr.attribute_type in [FOXAttributeType.Normal, FOXAttributeType.Expression]:
                     columns.append(attr.get_nemo_name())
                     values.append(attr.values)
 
@@ -79,7 +89,7 @@ class FOXFile:
 
             # data type conversions
             for attr in attributes:
-                if attr.attribute_type == FOXAttributeType.Normal:
+                if attr.attribute_type in [FOXAttributeType.Normal, FOXAttributeType.Expression]:
                     match attr.nemo_data_type:
 
                         case "date":
@@ -262,13 +272,19 @@ class FOXFile:
         # deal with date now
         pandas_string = pandas_string.replace("jjjj", "%Y")
         pandas_string = pandas_string.replace("yyyy", "%Y")
+        pandas_string = pandas_string.replace("aaaa", "%Y")
         pandas_string = pandas_string.replace("jj", "%y")
         pandas_string = pandas_string.replace("yy", "%y")
+        pandas_string = pandas_string.replace("aa", "%y")
         pandas_string = pandas_string.replace("mm", "%m")
+        # pandas_string = pandas_string.replace("m", "%m") #USI
         pandas_string = pandas_string.replace("dd", "%d")
-        pandas_string = pandas_string.replace("d", "%d")
+        # USI pandas_string = pandas_string.replace("d", "%d")
+        pandas_string = pandas_string.replace("tttt", "%D") #USI
         pandas_string = pandas_string.replace("tt", "%d")
         pandas_string = pandas_string.replace("t", "%d")
+
+        # logging.info(f"_detect_date_format('{attr.format}') => '{pandas_string}'  {attr.attribute_name}")
 
         # now guess the data type
         if any(token in pandas_string for token in ["%H", "%I", "%M", "%S"]) and any(
@@ -283,6 +299,7 @@ class FOXFile:
         else:
             data_type = "string"
             pandas_string = None
+
         return (data_type, pandas_string)
 
     def _read_global_part_1(self) -> FoxGlobal:
@@ -409,7 +426,10 @@ class FOXFile:
 
         global_information.num_olap_tree_items = reader.read_int()
         if global_information.num_olap_tree_items > 0:
-            raise NotImplementedError("NoOfOlapTreeItems>0 is not yet supported")
+            if self.foxReaderInfo:
+                self.foxReaderInfo.add_issue(IssueType.OLAPTREEITEMS)
+            else:
+                raise NotImplementedError("NoOfOlapTreeItems>0 is not yet supported")
 
         global_information.default_connect_string = reader.read_compressed_string()
 
@@ -425,7 +445,10 @@ class FOXFile:
         global_information.import_with_fixed_column_width = reader.read_bool()
         global_information.num_columns = reader.read_int()
         if global_information.num_columns > 0:
-            raise NotImplementedError("NrOfColumns>0 is not yet supported")
+            if self.foxReaderInfo:
+                self.foxReaderInfo.add_issue(IssueType.COLUMNNUMBER)
+            else:
+                raise NotImplementedError("NrOfColumns>0 is not yet supported")
 
         global_information.import_attribute_names = reader.read_bool()
         global_information.import_attribute_line = reader.read_int()
@@ -564,12 +587,23 @@ class FOXFile:
             if global_information.version_short >= "FOX2012/08/08":
                 attr.number_of_tags = reader.read_int()
                 if attr.number_of_tags > 0:
-                    raise NotImplementedError("Tag handling not implemented yet")
+                    attr.nemo_not_supported = True
+                    if self.foxReaderInfo:
+                        self.foxReaderInfo.add_issue(IssueType.TAGHANDLING, attr.attribute_name, attr.expression_string, attr.format)
+                    else:
+                        raise NotImplementedError("Tag handling not implemented yet")
             elif global_information.version_short >= "FOX2012/05/08":
-                raise NotImplementedError("Tag handling not implemented yet")
+                    attr.nemo_not_supported = True
+                    if self.foxReaderInfo:
+                        self.foxReaderInfo.add_issue(IssueType.TAGHANDLING, attr.attribute_name, attr.expression_string, attr.format)
+                    else: 
+                        raise NotImplementedError("Tag handling not implemented yet")
 
             if global_information.version_short >= "FOX2008/01/31":
                 attr.comment = reader.read_compressed_string()
+                if len(attr.comment) > 0:
+                    if self.foxReaderInfo:
+                        self.foxReaderInfo.add_issue(IssueType.COMMENT, attr.attribute_name, attr.expression_string, attr.format, extra_info=attr.comment)
 
             attr.format = reader.read_compressed_string()
             attr.unclear_format = reader.read_int()
@@ -646,7 +680,9 @@ class FOXFile:
                 attr.expression_string = reader.read_compressed_string()
                 attr.num_referenced_attributes = reader.read_int()
                 for _ in range(attr.num_referenced_attributes):
-                    attr.referenced_attributes.append(reader.read_CString())
+                    referencedAttribute = reader.read_CString()
+                    attr.referenced_attributes.append(referencedAttribute)
+                    # logging.info(f"FOXAttributeType.Expression attr={attr.attribute_name}  referencedAttribute={referencedAttribute}")
 
             if attr.attribute_type == FOXAttributeType.Link:
                 attr.original_attribute_index = reader.read_int()
@@ -665,7 +701,7 @@ class FOXFile:
                     num_values = reader.read_int()
                     for j in range(num_values):
                         key = f"range_{i}_value_{j}"
-                        val = reader.read_compressed_value("", 1)
+                        val = reader.read_compressed_value(attr.attribute_name, [], "", 1)
                         attr.classification_values[key] = val
                 attr.user_defined_order = reader.read_bool()
 
@@ -736,12 +772,12 @@ class FOXFile:
                 value_store = []
                 last_value = ""
                 for _ in range(attr.num_values):
-                    if _ % 100000 == 0:
-                        logging.info(
-                            f"Reading values for attribute {attr.attribute_name} ({_:,}/{attr.num_values:,})"
-                        )
+                    # if _ % 100000 == 0:
+                    #     logging.info(
+                    #         f"Reading values for attribute {attr.attribute_name} ({_:,}/{attr.num_values:,})"
+                    #     )
                     last_value = reader.read_compressed_value(
-                        last_value, bytes_per_index
+                        attr.attribute_name, value_store, last_value, bytes_per_index
                     )
                     value_store.append(last_value)
 
@@ -755,15 +791,21 @@ class FOXFile:
 
                 attr.value_frequency_coloring = reader.read_bool()
                 if attr.value_frequency_coloring:
-                    raise NotImplementedError(
-                        "Value frequency coloring not implemented"
-                    )
+                    attr.nemo_not_supported = True
+                    if self.foxReaderInfo:
+                        self.foxReaderInfo.add_issue(IssueType.VALUEFREQUENCYCOLORING, attr.attribute_name, "", attr.format)
+                    else:
+                        raise NotImplementedError("Value frequency coloring not implemented")
 
                 attr.explicit_colors = reader.read_bool()
                 if attr.explicit_colors:
-                    raise NotImplementedError("Explicit coloring not implemented")
+                    attr.nemo_not_supported = True
+                    if self.foxReaderInfo:
+                        self.foxReaderInfo.add_issue(IssueType.EXPLICITCOLORING, attr.attribute_name, "", attr.format)
+                    else:
+                       raise NotImplementedError("Explicit coloring not implemented")
 
-            # guess data conversion informtion
+            # guess data conversion information
             if attr.attribute_type == FOXAttributeType.Normal:
                 self._guess_data_conversion(attr)
 
@@ -817,9 +859,9 @@ class FOXFile:
                 self._detect_date_format(attr)
             )
 
-        logging.info(
-            f"attribute: {attr.attribute_name} with format '{attr.format}'. Guessed data type: '{attr.nemo_data_type}', unit: '{attr.nemo_unit}', numsep: '{attr.nemo_numeric_separator}', decp: '{attr.nemo_decimal_point}', pandas conversion: '{attr.nemo_pandas_conversion_format}'"
-        )
+        # logging.info(
+        #     f"attribute: {attr.attribute_name} with format '{attr.format}'. Guessed data type: '{attr.nemo_data_type}', unit: '{attr.nemo_unit}', numsep: '{attr.nemo_numeric_separator}', decp: '{attr.nemo_decimal_point}', pandas conversion: '{attr.nemo_pandas_conversion_format}'"
+        # )
 
     def close(self):
         """

@@ -3,8 +3,10 @@ from typing import TypeVar
 import logging
 
 from nemo_library.features.focus import focusMoveAttributeBefore
-from nemo_library.features.foxfile import FOXFile
-from nemo_library.features.foxformulaparser import FoxFormulaParser
+from nemo_library_fox_reader.foxfile import FOXFile
+from nemo_library_fox_reader.foxformulaparser import FoxFormulaParser
+from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
+from nemo_library_fox_reader.foxstatisticsinfo import IssueType
 from nemo_library.features.nemo_persistence_api import (
     createAttributeGroups,
     createAttributeLinks,
@@ -21,13 +23,16 @@ from nemo_library.features.nemo_persistence_api import (
 from nemo_library.model.attribute_group import AttributeGroup
 from nemo_library.model.attribute_link import AttributeLink
 from nemo_library.model.column import Column
-from nemo_library.model.foxattribute import FoxAttribute
+from nemo_library_fox_reader.foxattribute import FoxAttribute
+from nemo_library_fox_reader.foxformulaconverter import FoxFormulaConverter
 from nemo_library.model.project import Project
 from nemo_library.utils.config import Config
 from nemo_library.utils.utils import (
     SUMMARY_FUNCTIONS,
+    SUMMARY_FUNCTIONS_ALL,
     FOXAttributeType,
     get_display_name,
+    get_aggregation_function
 )
 
 T = TypeVar("T")
@@ -38,14 +43,17 @@ class FOXMeta:
     class for reconcile metadata of FOX file with NEMO project.
     """
 
-    def __init__(self, fox: FOXFile):
+    def __init__(self, fox: FOXFile, foxReaderInfo: FOXReaderInfo | None = None):
         self.global_information = fox.global_information
         self.attributes = fox.attributes
+        self.foxReaderInfo = foxReaderInfo
+        # logging.info(f"FOXMeta __init__ foxReaderInfo={self.foxReaderInfo}")
 
     def reconcile_metadata(
         self,
         config: Config,
         projectname: str,
+        statistics_only: bool = False
     ) -> None:
         """
         Reconciles the NEMO project metadata with the FOX file attributes.
@@ -53,10 +61,11 @@ class FOXMeta:
         Args:
             config (Config): NEMO configuration object.
             projectname (str): Name of the NEMO project to reconcile.
+            statistics_only (bool, optional): If True, statistics are collected and no ingestion is performed
         """
 
         # adjust parent relationships
-        logging.info("Setting parent relationships for FOX attributes...")
+      ##  logging.info("Setting parent relationships for FOX attributes...")
         self._set_parent_relationships()
 
         # read meatadata from FOX file
@@ -64,15 +73,20 @@ class FOXMeta:
         # during the processing, we will log unsupported attribute types
         # thus: links needs to be the last one to be processed, if they point to an unsupported attribute type,
         # the link will be skipped and not imported into NEMO project
+        attributegroups_fox = self._get_fox_columns_HEADER()
         columns_fox = self._get_fox_columns_NORMAL()
         columns_fox.extend(self._get_fox_columns_SUMMARY())
         columns_fox.extend(self._get_fox_columns_EXPRESSION())
+        columns_fox.extend(self._get_fox_columns_LINKS_with_DATEDETAILS())
         columns_fox.extend(self._get_fox_columns_CLASSIFICATION())
         columns_fox.extend(self._get_fox_columns_CASEDISCRIMINATION())
-        attributegroups_fox = self._get_fox_columns_HEADER()
+        # attributegroups_fox = self._get_fox_columns_HEADER()
         attributelinks_fox = self._get_fox_columns_LINK()
 
-        # log unnsupported attribute types
+        # for c in columns_fox:
+        #     logging.info(f">>>>>>>>>>>>>> columns_fox: '{c.displayName}'  '{c.internalName}'")
+
+        # log unsupported attribute types
         # TODO: implement support for these attribute types
         for attr in self.attributes:
             if attr.nemo_not_supported:
@@ -80,6 +94,11 @@ class FOXMeta:
                     f"Attribute {attr.attribute_name} (ID: {attr.attribute_id}) ist not unsupported. It will not be imported."
                 )
 
+        # if parameter statistics_only is True, then no ingestion takes place
+        if statistics_only:
+            logging.info("statistics_only is True => no ingestion takes place")
+            return
+        
         # create a project if it does not exist
         if not getProjectID(config=config, projectname=projectname):
             createProjects(
@@ -164,7 +183,7 @@ class FOXMeta:
             creates[key] = _find_new_objects(model_list, nemo_list)
 
             logging.info(
-                f"Found {len(deletions[key])} deletions, {len(updates[key])} updates, and {len(creates[key])} new {key} in FOX file."
+                f"Found  {key} {len(deletions[key])} deletions, {len(updates[key])} updates, and {len(creates[key])} new {key} in FOX file."
             )
 
         # Start with deletions
@@ -201,6 +220,9 @@ class FOXMeta:
                 )
 
         # finally, adjust order of objects in NEMO project
+        # logging.info("USI: REMOVED:  Adjusting order of objects in NEMO project...")
+        #USI self._adjust_order(config=config, projectname=projectname)
+
         logging.info("Adjusting order of objects in NEMO project...")
         self._adjust_order(config=config, projectname=projectname)
 
@@ -229,15 +251,15 @@ class FOXMeta:
             if current_level > 0 and (current_level - 1) in level_stack:
                 parent_attr = level_stack[current_level - 1]
                 attr.parent_index = parent_attr.attribute_id
-                logging.info(
-                    f"Setting parent of '{attr.attribute_name}' (level {current_level}) to "
-                    f"'{parent_attr.attribute_name}' (level {current_level - 1})"
-                )
+                # logging.info(
+                #     f"Setting parent of '{attr.attribute_name}' (level {current_level}) to "
+                #     f"'{parent_attr.attribute_name}' (level {current_level - 1})"
+                # )
             else:
                 attr.parent_index = None
-                logging.info(
-                    f"No parent found for '{attr.attribute_name}' (level {current_level})"
-                )
+                # logging.info(
+                #     f"No parent found for '{attr.attribute_name}' (level {current_level})"
+                # )
 
             # Update the stack for the current level
             level_stack[current_level] = attr
@@ -300,9 +322,9 @@ class FOXMeta:
 
                 if not attr.nemo_not_supported:
 
-                    logging.info(
-                        f"move attribute {attr.attribute_name} (Type {attr.attribute_type}) before {last_attr.attribute_name if last_attr else 'None'} (Parent: {self._get_parent_internal_name(attr)})"
-                    )
+                    # logging.info(
+                    #     f"move attribute {attr.attribute_name} (Type {attr.attribute_type}) before {last_attr.attribute_name if last_attr else 'None'} (Parent: {self._get_parent_internal_name(attr)})"
+                    # )
                     focusMoveAttributeBefore(
                         config=config,
                         projectname=projectname,
@@ -316,9 +338,9 @@ class FOXMeta:
 
                 # recursively adjust order for child attributes
                 if attr.attribute_type == FOXAttributeType.Header:
-                    logging.info(
-                        f"Recursively adjusting order for child attributes of {attr.attribute_name} (Type {attr.attribute_type})"
-                    )
+                    # logging.info(
+                    #     f"Recursively adjusting order for child attributes of {attr.attribute_name} (Type {attr.attribute_type})"
+                    # )
                     self._adjust_order(
                         config=config, projectname=projectname, start_attr=attr
                     )
@@ -392,15 +414,75 @@ class FOXMeta:
                     ),
                     None,
                 )
+
+                if attr.attribute2_index > 0 and not attr.attribute2_index == 4294967295 and not attribute2:
+                    logging.info(f"::::::::::::::::::::::::::::::: attr.attribute2_index {attr.attribute2_index} > 0 and not attribute2")
+
+                function_not_supported = False
                 function = SUMMARY_FUNCTIONS.get(attr.function,None)
-                # if we do not support this function, we have to ignore this attribute
+                # if we do not support this function, we have to convert as a normal attribute
                 if not function:
-                    logging.warning(f"Summary function {attr.function} not supported for attribute {attr.attribute_name}. Attribute will be ignored")
-                    attr.nemo_not_supported = True  # mark as not supported for now
-                logging.info(
-                    f"Processing summary attribute {attr.attribute_name} with attribute1 {attribute1.attribute_name} and attribute2 {attribute2.attribute_name if attribute2 else None}, function {attr.function}, marginal value {attr.marginal_value}, combined format {attr.combined_format}."
+                    logging.warning(f"Summary function {attr.function} not supported for attribute {attr.attribute_name}. Attribute {attr.get_nemo_name()} will be used as normal attribute")
+                    # attr.nemo_not_supported = True  # mark as not supported for now
+                    function_not_supported = True
+
+                    if self.foxReaderInfo:
+                        function_name = SUMMARY_FUNCTIONS_ALL.get(attr.function,None)
+                        expression = f"{function_name}({attribute1.attribute_name}"
+                        if (attribute2):
+                            expression = f"{expression}, {attribute2.attribute_name})"
+                        else:
+                            expression = f"{expression})"
+                        self.foxReaderInfo.add_issue(IssueType.SUMMARY, attr.attribute_name, expression, attr.format)
+                # logging.info(
+                #     f"Processing summary attribute {attr.attribute_name} with attribute1 {attribute1.attribute_name} and attribute2 {attribute2.attribute_name if attribute2 else None}, function {attr.function}, marginal value {attr.marginal_value}, combined format {attr.combined_format}."
+                # )
+
+                if not function_not_supported:
+                    # The formula is composed from the funtion name with one or two internal nemo attribute names as function parameters
+                    # expression = f"{function}({attribute1.get_nemo_name()}"
+                    # if (attribute2):
+                    #     expression = f"{expression}, {attribute2.get_nemo_name()})"
+                    # else:
+                    #     expression = f"{expression})"
+
+                    dataType = "float"
+                    if function == "Count" or function == "Count Distinct":
+                        dataType = "integer"
+
+                    aggregation_function = get_aggregation_function(function)
+                    column = Column(
+                                displayName=get_display_name(attr.attribute_name),
+                                importName=attr.get_nemo_name(),
+                                internalName=attr.get_nemo_name(),
+                                dataType=dataType,
+                                parentAttributeGroupInternalName=self._get_parent_internal_name(
+                                    attr
+                                ),
+                                columnType="FocusAggregationColumn",
+                                focusAggregationFunction = aggregation_function,
+                                focusAggregationSourceColumnInternalName=attribute1.get_nemo_name(),
+                                focusAggregationGroupByTargetType="Column" if attribute2 else "NotApplicable",
+                                focusGroupByTargetInternalName=attribute2.get_nemo_name() if attribute2 else None,
+                                groupByColumnInternalName=attribute2.get_nemo_name() if attribute2 else None,
+                                stringSize = 0,
+                                unit=attr.nemo_unit,
+                            )
+                    columns.append(column)
+                else:
+                    column = Column(
+                        displayName=get_display_name(attr.attribute_name),
+                        importName=attr.get_nemo_name(),
+                        internalName=attr.get_nemo_name(),
+                        dataType=attr.nemo_data_type,
+                        parentAttributeGroupInternalName=self._get_parent_internal_name(
+                            attr
+                        ),
+                        columnType="ExportedColumn",
+                        unit=attr.nemo_unit,
                 )
-                attr.nemo_not_supported = True  # mark as not supported for now
+                    columns.append(column)
+
         return columns
 
     def _get_fox_columns_EXPRESSION(self) -> list[Column]:
@@ -410,12 +492,146 @@ class FOXMeta:
         columns = []
         for attr in self.attributes:
             if attr.attribute_type == FOXAttributeType.Expression:
-                parser = FoxFormulaParser()
-                tree = parser.parse(attr.expression_string)
-                logging.info(tree.pretty())
-                attr.nemo_not_supported = True  # mark as not supported for now
+                attr.nemo_not_supported = False
+                formula = attr.expression_string
+                is_valid_formula_parsed = False
+
+                try:
+                    fox_formula_converter = FoxFormulaConverter(attr, self.attributes, self.foxReaderInfo)
+                    formula2 = fox_formula_converter.get_nemo_formula_from_infozoom_expression(formula)
                 
-                attr.nemo_not_supported = True  # mark as not supported for now
+                    formula = formula2
+                    is_valid_formula_parsed = True
+                except Exception as exception:
+                    self.foxReaderInfo.add_exception(exception)
+                    pass
+
+                nemo_data_type = "string"
+
+                try:
+                    for i in range(attr.num_referenced_attributes):
+                        refId = int(attr.referenced_attributes[i])
+                        referenced_attribute = next(
+                            (
+                                a
+                                for a in self.attributes
+                                if a.attribute_id == refId
+                            ),
+                            None,
+                        )
+                        if referenced_attribute:
+                            # set the data_type of the column to the data type of the data type of the first referenced attribute
+                            if nemo_data_type == "string":
+                                nemo_data_type = referenced_attribute.nemo_data_type
+
+                            if not is_valid_formula_parsed:
+                                # First trivial implementation of the conversion of InfoZoom formulas to Nemo formulas
+                                # by string replacement of "[X0]" to the internal name of the referenced attribute
+                                formula = formula.replace(f"[X{i}]", f"({referenced_attribute.get_nemo_name()})")
+                                formula = formula.replace("=", "==")
+                                formula = formula.replace("====", "==")
+                                formula = formula.replace("\"\"", "'NULL'")
+                            logging.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Expression attr={attr.attribute_name}  formula={formula}  referenced_attribute={referenced_attribute.attribute_name} nemo_data_type={referenced_attribute.nemo_data_type}")
+                        else:
+                            logging.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Expression attr={attr.attribute_name}  formula={formula}  referenced_attribute NOT FOUND refId={refId}")
+
+                except Exception as e:
+                    logging.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Exception loop referenced_attributes  num_referenced_attributes={attr.num_referenced_attributes}  i={i}")
+                    pass
+
+                if not nemo_data_type:
+                    nemo_data_type = attr.nemo_data_type
+
+                column = Column(
+                            displayName=get_display_name(attr.attribute_name),
+                            importName=attr.get_nemo_name(),
+                            internalName=attr.get_nemo_name(),
+                            dataType=nemo_data_type,
+                            parentAttributeGroupInternalName=self._get_parent_internal_name(
+                                attr
+                            ),
+                            columnType="DefinedColumn",
+                            formula=formula,
+                            unit=attr.nemo_unit,
+                        )
+                columns.append(column)
+                logging.info(f"Expression: '{attr.attribute_name}'  expression='{attr.expression_string}' formula='{formula}'")
+                
+                if self.foxReaderInfo:
+                    self.foxReaderInfo.add_issue(IssueType.EXPRESSION, attr.attribute_name, attr.expression_string, attr.format, extra_info=formula)
+        return columns
+
+    def _get_fox_columns_LINKS_with_DATEDETAILS(self) -> list[Column]:
+        """
+        Returns a list of DefinedColumn objects from the FOX file attributes. Detects links to a date/datetime attribute with a format for parts of a datetime like in datedetail groups
+        """
+        columns = []
+        for attr in self.attributes:
+            if attr.attribute_type == FOXAttributeType.Link:
+                referenced_attr = self._get_referenced_attribute(attr)
+
+                if referenced_attr.nemo_not_supported:
+                    logging.warning(
+                        f"Link {attr.attribute_name} references attribute {referenced_attr.attribute_name} which has an unsupported attribute type {referenced_attr.attribute_type}. Link is skipped."
+                    )
+                    continue
+
+                is_link_to_date_with_date_format = False
+                nemo_pandas_conversion_format = None
+                if referenced_attr.nemo_data_type in ["date", "datetime"]:
+                    nemo_data_type, nemo_pandas_conversion_format = (FOXFile._detect_date_format(None, attr))
+                    if nemo_data_type in ["date", "datetime"]:
+                        is_link_to_date_with_date_format = True
+                        logging.info(f"Link to date detected {attr.attribute_name} {referenced_attr.attribute_name} {nemo_data_type} {attr.format} {referenced_attr.format} {nemo_pandas_conversion_format}")
+
+                if is_link_to_date_with_date_format:
+                    # the attribute link references a date/datetime attribute and has a format of a part of datetime. 
+                    # such a scenario appears in datedetails attribute groups
+                    formula = None
+                    referenced_attribute_link = referenced_attr.get_nemo_name()
+
+                    # for known formats the link attribute is replaced by an expression attribute using a formula
+                    if nemo_pandas_conversion_format == "%Y":
+                        formula = f"year({referenced_attribute_link})"
+                        nemo_data_type = "integer"
+                    if nemo_pandas_conversion_format == "%m" or nemo_pandas_conversion_format == "m":
+                        formula = f"month({referenced_attribute_link})"
+                        nemo_data_type = "integer"
+                    if nemo_pandas_conversion_format == "%d" or nemo_pandas_conversion_format == "d":
+                        formula = f"day({referenced_attribute_link})"
+                        nemo_data_type = "integer"
+                    if nemo_pandas_conversion_format == "%H":
+                        formula = f"hour({referenced_attribute_link})"
+                        nemo_data_type = "integer"
+                    if nemo_pandas_conversion_format == "%M":
+                        formula = f"minute({referenced_attribute_link})"
+                        nemo_data_type = "integer"
+                    if nemo_pandas_conversion_format == "%S":
+                        formula = f"second({referenced_attribute_link})"
+                        nemo_data_type = "integer"
+                    if nemo_pandas_conversion_format == "%D": #USI
+                        formula = f"weekday({referenced_attribute_link})"
+                        nemo_data_type = "string"
+                        
+                    if formula is not None:
+                        # the expresssion attribute is a DefinedColumn in Nemo
+                        column = Column(
+                                    displayName=get_display_name(attr.attribute_name),
+                                    importName=attr.get_nemo_name(),
+                                    internalName=attr.get_nemo_name(),
+                                    dataType=nemo_data_type,
+                                    parentAttributeGroupInternalName=self._get_parent_internal_name(
+                                        attr
+                                    ),
+                                    columnType="DefinedColumn",
+                                    formula=formula,
+                                    unit=attr.nemo_unit,
+                                )
+                        columns.append(column)
+                    else:
+                        if self.foxReaderInfo:
+                            self.foxReaderInfo.add_issue(IssueType.UNSUPPORTEDFORMAT, attr.attribute_name, attr.expression_string, attr.format)
+
         return columns
 
     def _get_fox_columns_CLASSIFICATION(self) -> list[Column]:
@@ -425,7 +641,24 @@ class FOXMeta:
         columns = []
         for attr in self.attributes:
             if attr.attribute_type == FOXAttributeType.Classification:
-                attr.nemo_not_supported = True  # mark as not supported for now
+                # attr.nemo_not_supported = True  # mark as not supported for now
+                if self.foxReaderInfo:
+                    self.foxReaderInfo.add_issue(IssueType.CLASSIFICATION, attr.attribute_name, attr.expression_string, attr.format)
+
+                logging.info(f"Unsupported Classification detected '{attr.attribute_name}' '{attr.get_nemo_name()}' - Attribute is used as normal attribute")
+                
+                column = Column(
+                    displayName=get_display_name(attr.attribute_name),
+                    importName=attr.get_nemo_name(),
+                    internalName=attr.get_nemo_name(),
+                    dataType=attr.nemo_data_type,
+                    parentAttributeGroupInternalName=self._get_parent_internal_name(
+                        attr
+                    ),
+                    columnType="ExportedColumn",
+                    unit=attr.nemo_unit,
+                )
+                columns.append(column)
         return columns
 
     def _get_fox_columns_CASEDISCRIMINATION(self) -> list[Column]:
@@ -435,7 +668,24 @@ class FOXMeta:
         columns = []
         for attr in self.attributes:
             if attr.attribute_type == FOXAttributeType.CaseDiscrimination:
-                attr.nemo_not_supported = True  # mark as not supported for now
+                # attr.nemo_not_supported = True  # mark as not supported for now
+                if self.foxReaderInfo:
+                    self.foxReaderInfo.add_issue(IssueType.CASEDESCRIMINATION, attr.attribute_name, attr.expression_string, attr.format, extra_info=f"num_cases={attr.num_cases}")
+
+                logging.info(f"Unsupported CaseDiscrimination detected '{attr.attribute_name}' '{attr.get_nemo_name()}' - Attribute is used as normal attribute")
+
+                column = Column(
+                    displayName=get_display_name(attr.attribute_name),
+                    importName=attr.get_nemo_name(),
+                    internalName=attr.get_nemo_name(),
+                    dataType=attr.nemo_data_type,
+                    parentAttributeGroupInternalName=self._get_parent_internal_name(
+                        attr
+                    ),
+                    columnType="ExportedColumn",
+                    unit=attr.nemo_unit,
+                )
+                columns.append(column)
         return columns
 
     def _get_fox_columns_LINK(self) -> list[AttributeLink]:
@@ -455,17 +705,28 @@ class FOXMeta:
                     )
                     continue
 
-                attribute_links.append(
-                    AttributeLink(
-                        displayName=get_display_name(attr.attribute_name),
-                        internalName=attr.get_nemo_name(),
-                        sourceAttributeInternalName=referenced_attr.get_nemo_name(),
-                        parentAttributeGroupInternalName=self._get_parent_internal_name(
-                            attr
-                        ),
-                        sourceMetadataType="column",
+                is_link_to_date_with_date_format = False
+                nemo_pandas_conversion_format = None
+                if referenced_attr.nemo_data_type in ["date", "datetime"]:
+                    nemo_data_type, nemo_pandas_conversion_format = (FOXFile._detect_date_format(None, attr))
+                    if nemo_data_type in ["date", "datetime"]:
+                        if nemo_pandas_conversion_format in ["%Y", "%y", "%m", "m", "%d", "d", "%D", "%H", "%M", "%S"]:
+                            is_link_to_date_with_date_format = True
+                            # logging.info(f"Link to date detected {attr.attribute_name} {referenced_attr.attribute_name} {nemo_data_type} {attr.format} {referenced_attr.format} {nemo_pandas_conversion_format}")
+
+                if not is_link_to_date_with_date_format:
+#                    logging.info(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>> Link detected {attr.attribute_name} {referenced_attr.attribute_name}")
+                    attribute_links.append(
+                        AttributeLink(
+                            displayName=get_display_name(attr.attribute_name),
+                            internalName=attr.get_nemo_name(),
+                            sourceAttributeInternalName=referenced_attr.get_nemo_name(),
+                            parentAttributeGroupInternalName=self._get_parent_internal_name(
+                                attr
+                            ),
+                            sourceMetadataType="column",
+                        )
                     )
-                )
         return attribute_links
         
     def _get_attribute_group_type(self, attr: FoxAttribute) -> str:
@@ -520,6 +781,4 @@ class FOXMeta:
             referenced_attr = self._get_referenced_attribute(referenced_attr)
 
         return referenced_attr
-
-
 

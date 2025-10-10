@@ -3,20 +3,27 @@ foxbinaryreader.py: Utility for reading binary data from FOX files.
 """
 
 import struct
+import logging
+from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
+from nemo_library_fox_reader.foxstatisticsinfo import IssueType
 from typing import BinaryIO
 
 
-class BinaryReader:
+class FoxBinaryReader:
     """
     A helper class for reading various binary data types from a binary stream, specifically for FOX file parsing.
     """
-    def __init__(self, stream: BinaryIO):
+    def __init__(self, stream: BinaryIO, foxReaderInfo: FOXReaderInfo | None = None):
         """
         Initialize the BinaryReader with a binary stream.
         Args:
             stream (BinaryIO): The binary stream to read from.
+            foxReaderInfo: Stores statistics information about the implementation of InfoZoom features.
         """
         self.stream = stream
+        self.foxReaderInfo = foxReaderInfo
+        # logging.info(f"BinaryReader __init__ foxReaderInfo={self.foxReaderInfo}")
+
 
     def read_bytes(self, num: int) -> bytes:
         """
@@ -119,7 +126,7 @@ class BinaryReader:
         return [int.from_bytes(data[i:i+n], byteorder=byteorder, signed=signed)
                 for i in range(0, len(data), n)]
         
-    def read_compressed_value(self, last_value: str, bytes_per_index: int) -> str:
+    def read_compressed_value(self, attribute_name: str, value_store: list[str], last_value: str, bytes_per_index: int) -> str:
         """
         Reads a compressed string value, possibly reusing prefix from the last value.
         Args:
@@ -145,8 +152,53 @@ class BinaryReader:
         else:
             char_buffer = self.read_bytes(i_length_in_bytes)
             temp = char_buffer.decode("utf-8", errors="ignore")
+            if temp.startswith("%"):
+                if self.foxReaderInfo:
+                    if (attribute_name not in self.foxReaderInfo.attributes_with_images_shown):
+                        self.foxReaderInfo.attributes_with_images_shown.append(attribute_name)
+                        self.foxReaderInfo.add_issue(IssueType.IMAGESSHOWN, attribute_name)
+
+            if temp.startswith("#") and len(temp) > 1 and temp[1].isnumeric:
+                if self.foxReaderInfo:
+                    if (attribute_name not in self.foxReaderInfo.attributes_with_sort_order_used):
+                        self.foxReaderInfo.attributes_with_sort_order_used.append(attribute_name)
+                        self.foxReaderInfo.add_issue(IssueType.SORTORDERSUSED, attribute_name)
+
+            if temp.startswith("~|"):
+                if self.foxReaderInfo:
+                    if (attribute_name not in self.foxReaderInfo.attributes_with_html_links_used):
+                        self.foxReaderInfo.attributes_with_html_links_used.append(attribute_name)
+                        self.foxReaderInfo.add_issue(IssueType.HTMLLINKSUSED, attribute_name)
+
             if temp.startswith("|"):
-                raise NotImplementedError("Multi-value decoding not implemented in this context.")
+                if self.foxReaderInfo:
+                    if (attribute_name not in self.foxReaderInfo.attributes_with_multiple_values):
+                        self.foxReaderInfo.attributes_with_multiple_values.append(attribute_name)
+                        self.foxReaderInfo.add_issue(IssueType.MULTIPLEVALUES, attribute_name)
+                # else:
+                #     logging.info("FOXBinaryReader foxReaderInfo is None")
+
+                # Multi-value attributes starts with a "|"
+                # Because they are not supported in Nemo right now they are changed to single values by concatenating the values
+                try:
+                    concatenated_values = "| "
+
+                    #after the "|" the number of values are written in the first byte followed by the indices of the value in the value store
+                    num_values = ord(temp[1])
+                    
+                    for i in range(2,num_values + 2):
+                        index_in_value_store = ord(temp[i])
+                        if (index_in_value_store < len(value_store)):
+                            multiple_value = value_store[index_in_value_store]
+                            concatenated_values += multiple_value + " | "
+                        else:
+                            concatenated_values += f"invalid index {index_in_value_store} #={len(value_store)} | "
+
+                    return concatenated_values
+                except Exception:
+                    return temp
+                
+
             return temp        
         
     def read_color_scheme(self) -> dict:

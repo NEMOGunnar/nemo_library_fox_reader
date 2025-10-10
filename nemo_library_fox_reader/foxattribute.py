@@ -1,6 +1,10 @@
 from dataclasses import asdict, dataclass, field
 from typing import Optional, List, Dict, Any
 
+from nemo_library.utils.utils import (
+    get_internal_name
+)
+
 
 @dataclass
 class FoxAttribute:
