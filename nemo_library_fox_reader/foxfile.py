@@ -10,7 +10,7 @@ import pandas as pd
 from nemo_library_fox_reader.foxattribute import FoxAttribute
 from nemo_library_fox_reader.foxbinaryreader import FoxBinaryReader
 from nemo_library_fox_reader.foxglobal import FoxGlobal
-from nemo_library.utils.utils import FOXAttributeType
+from nemo_library_fox_reader.foxutils import FOXAttributeType
 
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 from nemo_library_fox_reader.foxstatisticsinfo import IssueType

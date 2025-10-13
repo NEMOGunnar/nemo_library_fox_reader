@@ -11,7 +11,7 @@ from nemo_library.features.metadata import (
     MetaDataLoad,
 )
 from nemo_library.features.migman_precheck_files import MigManPrecheckFiles
-from nemo_library.features.nemo_persistence_api import (
+from nemo_library_fox_reader.foxnemo_persistence_api import (
     createApplications,
     createAttributeGroups,
     createAttributeLinks,
@@ -173,10 +173,7 @@ class FoxNemoLibrary:
             migman_additional_fields=migman_additional_fields,
             migman_multi_projects=migman_multi_projects,
             metadata_directory=metadata_directory,
-            etl_directory=etl_directory,
             hubspot_api_token=hubspot_api_token,
-            gedys_user_id=gedys_user_id,
-            gedys_password=gedys_password,
             foxreader_statistics_file=foxreader_statistics_file,
         )
 

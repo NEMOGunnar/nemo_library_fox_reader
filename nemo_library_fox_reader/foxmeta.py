@@ -27,11 +27,15 @@ from nemo_library_fox_reader.foxattribute import FoxAttribute
 from nemo_library_fox_reader.foxformulaconverter import FoxFormulaConverter
 from nemo_library.model.project import Project
 from nemo_library.utils.config import Config
+
 from nemo_library.utils.utils import (
+    get_display_name,
+)
+
+from nemo_library_fox_reader.foxutils import (
     SUMMARY_FUNCTIONS,
     SUMMARY_FUNCTIONS_ALL,
     FOXAttributeType,
-    get_display_name,
     get_aggregation_function
 )
 
