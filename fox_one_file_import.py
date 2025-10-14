@@ -27,7 +27,7 @@ statistics_only = False
 ##nl.ReUploadFile(projectname="FOX USI 93 Printers",filename="../fox_files/printers without Attributegroup 'Paper sizes'.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX Statistics 4",filename="statistic_files/fox_statistics_09d.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 72 Bekleidungs-Shop",filename="../fox_files/Bekleidungs-Shop 2018 short.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
-nl.ReUploadFile(projectname="FOX USI 65 Bekleidungs-Shop",filename="fox_files/Bekleidungs-Shop 2018 mit Analyse.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+nl.ReUploadFile(projectname="FOX USI 63 Bekleidungs-Shop",filename="fox_files/Bekleidungs-Shop 2018 mit Analyse.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 99 Angebotsbestand",filename="../fox_files/Demodaten/BUAA/Angebotsbestand_Demodaten/Angebotsbestand_final.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 98 CeBit 2014 InfoZoomVending",filename="../fox_files/Demodaten/CeBit 2014/Vending/InfoZoomVending.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 93 EinkaufDetail",filename="../fox_files/Demodaten/ERP/EinkaufDetail.fox",update_project_settings=False, statistics_only=statistics_only, foxReaderInfo=foxReaderInfo)

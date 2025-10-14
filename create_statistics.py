@@ -23,7 +23,8 @@ nl = FoxNemoLibrary(foxReaderInfo=foxReaderInfo)
 
 # fox_folder = Path("../fox_files_excerpt") 
 fox_folder = Path("fox_files/Demodaten") 
-# fox_folder = Path("../fox_files/Demodaten/ERP") 
+# fox_folder = Path("fox_files/Demodaten/ERP") 
+
 for fox_file in fox_folder.rglob("*.fox"):
     logging.info("*" * 80)
     logging.info(f"Processing FOX file: {fox_file} into project 'FOX_{fox_file.stem}'")

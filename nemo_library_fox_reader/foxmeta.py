@@ -442,6 +442,13 @@ class FOXMeta:
                 #     f"Processing summary attribute {attr.attribute_name} with attribute1 {attribute1.attribute_name} and attribute2 {attribute2.attribute_name if attribute2 else None}, function {attr.function}, marginal value {attr.marginal_value}, combined format {attr.combined_format}."
                 # )
 
+                if attribute2 and self._get_attribute_group_type(attribute2) == "Analysis":
+                    logging.info(
+                        f"AGGREGATIONWITHANALYSISGROUP detected {SUMMARY_FUNCTIONS_ALL.get(attr.function,None)}  {attr.attribute_name}, {attribute1.attribute_name}, {attribute2.attribute_name}."
+                    )
+                    if self.foxReaderInfo:
+                        self.foxReaderInfo.add_issue(IssueType.AGGREGATIONWITHANALYSISGROUP, attr.attribute_name, SUMMARY_FUNCTIONS_ALL.get(attr.function,None), attr.format, extra_info=f"'{attribute1.attribute_name}' '{attribute2.attribute_name}'")
+                    
                 if not function_not_supported:
                     # The formula is composed from the funtion name with one or two internal nemo attribute names as function parameters
                     # expression = f"{function}({attribute1.get_nemo_name()}"

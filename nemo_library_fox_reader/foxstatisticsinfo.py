@@ -43,6 +43,7 @@ class IssueType(Enum):
     CLASSIFICATION = "classification"
     CASEDESCRIMINATION = "case_discrimination"
     FUNCTIONCALL = "function_call"
+    AGGREGATIONWITHANALYSISGROUP = "aggregation_with_analysis_group"
     UNSUPPORTEDFORMAT = "unsupported_format"
     IMAGESSHOWN = "images_shown"
     HTMLLINKSUSED = "html_links_used"
