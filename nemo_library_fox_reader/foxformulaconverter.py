@@ -102,7 +102,8 @@ class FoxFormulaConverter:
             case "function":
                 formula_part = self.match_function(tree, formula_part)
                 
-            case "args":
+            # case "args":
+            case "arg_list":
                 formula_part = self.match_args(tree, formula_part)
                 
             case "string": #"ESCAPED_STRING":
