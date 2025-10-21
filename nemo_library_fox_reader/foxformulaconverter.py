@@ -34,8 +34,8 @@ class FoxFormulaConverter:
         if not self.parser.is_valid:
             raise ValueError(f"FoxFormulaConverter parser error  INVALID EXPRESSION:'{expression}'")
 
-        if expression=='if([X0] < 3,"#1#klein",if([X0] < 10,"#2#mittel","#3#gross"))':
-            delasap = 42
+        # if expression=='if([X0] < 3,"#1#klein",if([X0] < 10,"#2#mittel","#3#gross"))':
+        #     delasap = 42
 
         formula = self.inspect_tree(tree, "")
 
@@ -52,6 +52,15 @@ class FoxFormulaConverter:
         """
 
         # logging.info(f"inspect_tree  data={tree.data}  left={formula_part}")
+
+
+        if not isinstance(tree, Tree):
+            formula_part = self.match_args(tree, formula_part)
+
+            value_str = self.get_token(tree)
+            if value_str == "" or len(value_str) == 0:
+                value_str = "'NULL'"
+            formula_delasap = formula_part + f'{value_str}'
 
         match tree.data:
             case  "if_expr":
@@ -151,8 +160,26 @@ class FoxFormulaConverter:
 
             if tree.children[1]:
                 child_args = tree.children[1].children[0]
-                formula_part = self.inspect_tree(child_args, formula_part)
-  
+                formula_delasap = self.inspect_tree(child_args, formula_part)
+
+                formula_part = self.inspect_tree(tree.children[1], formula_part)
+
+                # # child_args can be a Tree (with .children) or a plain list/tuple or
+                # # even a single node. Normalize to an iterable list of argument nodes
+                # # so we can safely calculate the number of items with len(args).
+                # if isinstance(child_args, Tree) and hasattr(child_args, 'children'):
+                #     args = child_args #.children
+                # elif isinstance(child_args, (list, tuple)):
+                #     args = child_args
+                # else:
+                #     args = [child_args]
+
+                # # iterate and append commas correctly (append before each but the first)
+                # for i, child_arg in enumerate(args):
+                #     if i > 0:
+                #         formula_part = " , " + formula_part
+                #     formula_part = self.inspect_tree(child_arg, formula_part)
+
             formula_part = formula_part + ') '
 
             if self.foxReaderInfo:
@@ -167,7 +194,19 @@ class FoxFormulaConverter:
 
     def match_args(self, tree: Tree, formula_part: str) -> str:
         try:
-            formula_part = self.inspect_tree(tree.children[0], formula_part)
+            for i, child in enumerate(tree.children):
+                if i > 0:
+                    formula_part += " , "
+                formula_part = self.inspect_tree(child, formula_part)
+
+            # if tree.children[1]:
+            #     for i, child_arg in enumerate(tree.children[1]):
+            #         if i > 0:
+            #             formula_part = " , " + formula_part
+            #         formula_part = self.inspect_tree(child_arg, formula_part)
+
+
+            # formula_part = self.inspect_tree(tree.children[0], formula_part)
 
         except Exception as e:
             logging.warning(f"Exception FoxFormulaConverter.match_args: {e}")
@@ -231,7 +270,7 @@ class FoxFormulaConverter:
 
             referenced_attribute = self.get_referenced_attribute(id_token)
             if referenced_attribute:
-                formula_part = formula_part + f"({referenced_attribute.get_nemo_name()})"
+                formula_part = formula_part + f"{referenced_attribute.get_nemo_name()}"
             else:
                 formula_part = formula_part + f' Attribute with ID={id} not found '
 

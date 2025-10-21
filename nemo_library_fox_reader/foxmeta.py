@@ -535,16 +535,6 @@ class FOXMeta:
                             if nemo_data_type == "string":
                                 nemo_data_type = referenced_attribute.nemo_data_type
 
-                            if not is_valid_formula_parsed:
-                                # First trivial implementation of the conversion of InfoZoom formulas to Nemo formulas
-                                # by string replacement of "[X0]" to the internal name of the referenced attribute
-                                formula = formula.replace(f"[X{i}]", f"({referenced_attribute.get_nemo_name()})")
-                                formula = formula.replace("=", "==")
-                                formula = formula.replace("====", "==")
-                                formula = formula.replace("\"\"", "'NULL'")
-                            logging.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Expression attr={attr.attribute_name}  formula={formula}  referenced_attribute={referenced_attribute.attribute_name} nemo_data_type={referenced_attribute.nemo_data_type}")
-                        else:
-                            logging.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Expression attr={attr.attribute_name}  formula={formula}  referenced_attribute NOT FOUND refId={refId}")
 
                 except Exception as e:
                     logging.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Exception loop referenced_attributes  num_referenced_attributes={attr.num_referenced_attributes}  i={i}")
@@ -679,11 +669,99 @@ class FOXMeta:
         columns = []
         for attr in self.attributes:
             if attr.attribute_type == FOXAttributeType.CaseDiscrimination:
-                # attr.nemo_not_supported = True  # mark as not supported for now
                 if self.foxReaderInfo:
                     self.foxReaderInfo.add_issue(IssueType.CASEDESCRIMINATION, attr.attribute_name, attr.expression_string, attr.format, extra_info=f"num_cases={attr.num_cases}")
 
-                logging.info(f"Unsupported CaseDiscrimination detected '{attr.attribute_name}' '{attr.get_nemo_name()}' - Attribute is used as normal attribute")
+                case_expression_string = ""
+
+                try:
+                    # Build a CASE expression from the case discrimination structure.
+                    # attr.cases is a dict which may contain entries like:
+                    #  - 'case_0': { 'condition': cond, 'class_value': class_val, 'refattrs': refs }
+                    #  - 'case_0_class_attribute_index': <int>
+                    # We only want the numbered 'case_X' entries (the dicts), not the
+                    # auxiliary keys that end with '_class_attribute_index'.
+                    case_expression_string = "CASE "
+                    expression_string = ""
+
+                    for case_key, case_val in attr.cases.items():
+                        # only handle case entries that are dicts with a 'condition'
+                        if not isinstance(case_val, dict):
+                            continue
+                        condition = case_val.get("condition", "")
+                        class_value = case_val.get("class_value", "")
+                        refs = case_val.get("refattrs", []) or []
+
+                        # Replace [X0], [X1], ... placeholders with referenced attribute internal names
+                        for i, ref in enumerate(refs):
+                            try:
+                                ref_id = int(ref)
+                            except Exception:
+                                ref_id = None
+
+                            referenced_attribute = None
+                            if ref_id is not None:
+                                referenced_attribute = next(
+                                    (
+                                        a
+                                        for a in self.attributes
+                                        if a.attribute_id == ref_id
+                                    ),
+                                    None,
+                                )
+                            # fallback: try to match by attribute name
+                            if not referenced_attribute:
+                                referenced_attribute = next(
+                                    (
+                                        a
+                                        for a in self.attributes
+                                        if a.attribute_name == ref
+                                    ),
+                                    None,
+                                )
+
+                            if referenced_attribute:
+                                placeholder = f"[X{str(i)}]"
+                                replacement = f"({referenced_attribute.get_nemo_name()})"
+                                condition = condition.replace(placeholder, replacement)
+                                class_value = class_value.replace(placeholder, replacement)
+
+                        # Quote non-numeric class values if not already quoted
+                        def _quote_if_needed(val: str) -> str:
+                            if val is None:
+                                return "'NULL'"
+                            s = str(val)
+                            s_strip = s.strip()
+                            if s_strip == "" or s_strip.upper() == 'NULL':
+                                return "'NULL'"
+                            if (s_strip.startswith("'") and s_strip.endswith("'")) or (
+                                s_strip.startswith('"') and s_strip.endswith('"')
+                            ):
+                                return s_strip
+                            # numeric?
+                            try:
+                                float(s_strip)
+                                return s_strip
+                            except Exception:
+                                pass
+                            # escape single quotes
+                            s_escaped = s_strip.replace("'", "''")
+                            return f"'{s_escaped}'"
+
+                        class_value_quoted = _quote_if_needed(class_value)
+
+                        case_expression_string += f"WHEN {condition} THEN {class_value_quoted} "
+                        expression_string += f"IF (({condition}) , {class_value_quoted} , "
+
+                    expression_string += "'NULL'"
+                    for i in range(attr.num_cases):
+                        expression_string += ")" 
+
+                except Exception as e:
+                    logging.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Exception while processing case_values num_cases={attr.num_cases} exception={e}")
+                    pass
+
+                logging.info(f"CaseDiscrimination detected '{attr.attribute_name}' num_cases={attr.num_cases} - Expression: {expression_string}")
 
                 column = Column(
                     displayName=get_display_name(attr.attribute_name),
@@ -693,7 +771,8 @@ class FOXMeta:
                     parentAttributeGroupInternalName=self._get_parent_internal_name(
                         attr
                     ),
-                    columnType="ExportedColumn",
+                    columnType="DefinedColumn",
+                    formula=expression_string,
                     unit=attr.nemo_unit,
                 )
                 columns.append(column)

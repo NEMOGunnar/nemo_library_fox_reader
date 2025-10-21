@@ -791,7 +791,7 @@ class FOXFile:
 
                 attr.value_frequency_coloring = reader.read_bool()
                 if attr.value_frequency_coloring:
-                    attr.nemo_not_supported = True
+                    # attr.nemo_not_supported = True
                     if self.foxReaderInfo:
                         self.foxReaderInfo.add_issue(IssueType.VALUEFREQUENCYCOLORING, attr.attribute_name, "", attr.format)
                     else:
@@ -799,7 +799,7 @@ class FOXFile:
 
                 attr.explicit_colors = reader.read_bool()
                 if attr.explicit_colors:
-                    attr.nemo_not_supported = True
+                    # attr.nemo_not_supported = True
                     if self.foxReaderInfo:
                         self.foxReaderInfo.add_issue(IssueType.EXPLICITCOLORING, attr.attribute_name, "", attr.format)
                     else:
