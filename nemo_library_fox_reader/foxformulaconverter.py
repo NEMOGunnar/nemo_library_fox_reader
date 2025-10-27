@@ -120,6 +120,7 @@ class FoxFormulaConverter:
                 if value_str == '""' or len(value_str) == 0:
                     value_str = "'NULL'"
                 formula_part = formula_part + f'{value_str}'
+                self.last_used_string_token = value_str
                 # logging.info(f"inspect_tree  <<string>> value_str={value_str}")
 
             case "number": #"SIGNED_NUMBER":
@@ -129,6 +130,13 @@ class FoxFormulaConverter:
                 formula_part = formula_part + f'{value_str}'
                 # logging.info(f"inspect_tree  <<number>> value_str={value_str}")
 
+            case "string_singlequoted": #"SINGLEQUOTED_STRING":
+                value_str = self.get_token(tree.children[0])
+                if value_str == "''" or len(value_str) == 0:
+                    value_str = "'NULL'"
+                formula_part = formula_part + f'{value_str}'
+                self.last_used_string_token = value_str
+                
             case _:
                 logging.info(f"inspect_tree  UNKNOWN TOKEN={tree.data}")
                 raise ValueError(f"FoxFormulaConverter inspect_tree  UNKNOWN TOKEN={tree.data}")
@@ -225,9 +233,17 @@ class FoxFormulaConverter:
     
     def match_factor(self, tree: Tree, factor: str, formula_part: str) -> str:
         try:
+            self.last_referenced_attribute = None
+            self.last_used_string_token = None
+
             formula_part = self.inspect_tree(tree.children[0], formula_part)
             formula_part = formula_part + f" {factor} "
             formula_part = self.inspect_tree(tree.children[1], formula_part)
+
+            if self.last_referenced_attribute and self.last_referenced_attribute.nemo_data_type in ['integer','float'] and self.last_used_string_token:
+                if self.foxReaderInfo:
+                    self.foxReaderInfo.add_issue(IssueType.NUMBERSTRINGCONCATENATION, self.last_referenced_attribute.attribute_name, formula_part, None, extra_info=self.last_used_string_token)
+
 
         except Exception as e:
             logging.warning(f"Exception FoxFormulaConverter.match_factor: {e}")
@@ -358,4 +374,6 @@ class FoxFormulaConverter:
             ),
             None,
         )
+
+        self.last_referenced_attribute = referenced_attribute
         return referenced_attribute

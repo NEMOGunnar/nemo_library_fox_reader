@@ -669,9 +669,8 @@ class FOXMeta:
         columns = []
         for attr in self.attributes:
             if attr.attribute_type == FOXAttributeType.CaseDiscrimination:
-                if self.foxReaderInfo:
-                    self.foxReaderInfo.add_issue(IssueType.CASEDESCRIMINATION, attr.attribute_name, attr.expression_string, attr.format, extra_info=f"num_cases={attr.num_cases}")
 
+                expression_string = ""
                 case_expression_string = ""
 
                 try:
@@ -689,6 +688,7 @@ class FOXMeta:
                         if not isinstance(case_val, dict):
                             continue
                         condition = case_val.get("condition", "")
+                        condition = condition.replace("=", "==")  # NEMO uses double '==' for equality
                         class_value = case_val.get("class_value", "")
                         refs = case_val.get("refattrs", []) or []
 
@@ -761,7 +761,9 @@ class FOXMeta:
                     logging.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Exception while processing case_values num_cases={attr.num_cases} exception={e}")
                     pass
 
-                logging.info(f"CaseDiscrimination detected '{attr.attribute_name}' num_cases={attr.num_cases} - Expression: {expression_string}")
+                if self.foxReaderInfo:
+                    self.foxReaderInfo.add_issue(IssueType.CASEDESCRIMINATION, attr.attribute_name, expression_string, attr.format, extra_info=f"num_cases={attr.num_cases}")
+                # logging.info(f"CaseDiscrimination detected '{attr.attribute_name}' num_cases={attr.num_cases} - Expression: {expression_string}")
 
                 column = Column(
                     displayName=get_display_name(attr.attribute_name),
@@ -776,6 +778,7 @@ class FOXMeta:
                     unit=attr.nemo_unit,
                 )
                 columns.append(column)
+
         return columns
 
     def _get_fox_columns_LINK(self) -> list[AttributeLink]:

@@ -88,6 +88,8 @@ class FoxAttribute:
     # Classification attribute
     classified_attribute_index: Optional[int] = None
     num_value_ranges: Optional[int] = None
+    # Detailed per-range metadata for classification attributes
+    classification_ranges: List[Dict[str, Any]] = field(default_factory=list)
     classification_values: Dict[str, Any] = field(default_factory=dict)
     user_defined_order: Optional[bool] = None
 

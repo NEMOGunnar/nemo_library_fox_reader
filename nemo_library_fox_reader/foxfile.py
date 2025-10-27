@@ -16,6 +16,7 @@ from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 from nemo_library_fox_reader.foxstatisticsinfo import IssueType
 
 MINIMUM_FOX_VERSION = "FOX2006/11/08"
+MAXIMUM_FOX_VERSION = "FOX2025/07/23"
 
 
 T = TypeVar("T")
@@ -322,6 +323,11 @@ class FOXFile:
             raise ValueError(
                 f"Unsupported FOX version: {version_short} in file {self.file_path}. Minimum required is {MINIMUM_FOX_VERSION}."
             )
+        
+        if version_short > MAXIMUM_FOX_VERSION:
+            raise ValueError(
+                f"Unsupported FOX version: {version_short} in file {self.file_path}. Maximum required is {MAXIMUM_FOX_VERSION}."
+            )
 
         global_information = FoxGlobal(
             version_full=version_full,
@@ -464,9 +470,18 @@ class FOXFile:
             global_information.import_from_url = False
             global_information.imported_url = ""
 
-        reader.read_int()  # lDatasource (unused)
-        reader.read_int()  # iImportEncoding (unused)
-        reader.read_int()  # iImportCodePage (unused)
+        datasource_unused = reader.read_int()  # lDatasource (unused)
+
+        # read nemo specific data (unused)
+        if version_short >= "FOX2025/02/25":
+            global_information.nemo_project_name = reader.read_CString()
+            global_information.nemo_environment = reader.read_CString()
+            global_information.nemo_tenant = reader.read_CString()
+            global_information.nemo_is_new_project = reader.read_bool()
+
+
+        importEncoding_unused = reader.read_int()  # iImportEncoding (unused)
+        importCodePage_unused = reader.read_int()  # iImportCodePage (unused)
 
         if version_short >= "FOX2008/06/04":
             if version_short >= "FOX2010/05/14":
@@ -475,6 +490,9 @@ class FOXFile:
                 global_information.serialized_database_join_info = (
                     reader.read_compressed_string()
                 )
+            if global_information.serialized_database_join_info:
+                if self.foxReaderInfo:
+                    self.foxReaderInfo.add_issue(IssueType.DATABASEASSISTANTUSED, extra_info=f"length serialized_database_join_info={len(global_information.serialized_database_join_info)}")
 
         if version_short >= "FOX2014/10/08":
             global_information.excel_file = reader.read_compressed_string()
@@ -569,6 +587,8 @@ class FOXFile:
 
         for _ in range(global_information.num_attributes):
             attribute_name = reader.read_CString()
+            logging.info(f"Reading attribute: {_} {attribute_name}")
+
             if len(attribute_name) > 1 and attribute_name[0] == "+":
                 attribute_name = attribute_name[
                     1:
@@ -692,13 +712,19 @@ class FOXFile:
             if attr.attribute_type == FOXAttributeType.Classification:
                 attr.classified_attribute_index = reader.read_int()
                 attr.num_value_ranges = reader.read_int()
+                expression = ""
                 for i in range(attr.num_value_ranges):
                     op = reader.read_int()
                     threshold = reader.read_double()
                     s_threshold = reader.read_CString()
+                    s_class_value = reader.read_CString()
+
                     if global_information.version_short >= "FOX2010/05/17":
-                        unmodified = reader.read_int()
+                        unmodified = reader.read_bool() #.read_int()
                     num_values = reader.read_int()
+                    
+                    logging.info(f"Classification attribute detected '{attr.attribute_name}': range {i}, op={op}, threshold={threshold}, s_threshold={s_threshold}, s_class_value={s_class_value}, num_values={num_values}")
+
                     for j in range(num_values):
                         key = f"range_{i}_value_{j}"
                         val = reader.read_compressed_value(attr.attribute_name, [], "", 1)

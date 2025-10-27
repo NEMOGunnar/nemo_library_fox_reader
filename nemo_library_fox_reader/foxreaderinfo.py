@@ -22,7 +22,7 @@ class FOXReaderInfo:
         self.statistics_infos.append(info)
 
 
-    def add_issue(self, issue: str, attribute: str, formula: str = "", format: str = "", extra_info: str=""):
+    def add_issue(self, issue: str, attribute: str = "", formula: str = "", format: str = "", extra_info: str=""):
         info = FOXStatisticsInfo()
         info.issue = f"{issue}" # IssueType.get(issue, None)
         info.issue = info.issue.replace("IssueType.", "")

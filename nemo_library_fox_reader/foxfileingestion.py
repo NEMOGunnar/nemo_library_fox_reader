@@ -354,26 +354,26 @@ def ReUploadFile(
 
 
 
-                # Debugging: log DataFrame metadata and a small sample so we can
-                # inspect what the task_runs endpoint returned for troubleshooting.
-                try:
-                    logging.debug(f"task_runs DataFrame shape: {df.shape}")
-                    logging.debug(f"task_runs DataFrame columns: {list(df.columns)}")
-                    # log dtypes for each column
-                    logging.debug("task_runs DataFrame dtypes:\n" + df.dtypes.to_string())
-                    # log the first few rows (avoid logging too many rows)
-                    logging.debug("task_runs DataFrame head:\n" + df.head(10).to_string())
+                # # Debugging: log DataFrame metadata and a small sample so we can
+                # # inspect what the task_runs endpoint returned for troubleshooting.
+                # try:
+                #     logging.debug(f"task_runs DataFrame shape: {df.shape}")
+                #     logging.debug(f"task_runs DataFrame columns: {list(df.columns)}")
+                #     # log dtypes for each column
+                #     logging.debug("task_runs DataFrame dtypes:\n" + df.dtypes.to_string())
+                #     # log the first few rows (avoid logging too many rows)
+                #     logging.debug("task_runs DataFrame head:\n" + df.head(10).to_string())
 
-                    # If possible, write the raw records JSON to a temporary file for later inspection
-                    try:
-                        tmpf = tempfile.NamedTemporaryFile(prefix="nemo_task_runs_", suffix=".json", delete=False)
-                        with open(tmpf.name, "w", encoding="utf-8") as jf:
-                            json.dump(resultjs.get("records", resultjs), jf, ensure_ascii=False, indent=2)
-                        logging.info(f"Wrote raw task_runs JSON to {tmpf.name} for inspection")
-                    except Exception as e:
-                        logging.debug(f"Could not write raw task_runs JSON to temp file: {e}")
-                except Exception as e:
-                    logging.debug(f"Exception while debugging task_runs DataFrame: {e}")
+                #     # If possible, write the raw records JSON to a temporary file for later inspection
+                #     try:
+                #         tmpf = tempfile.NamedTemporaryFile(prefix="nemo_task_runs_", suffix=".json", delete=False)
+                #         with open(tmpf.name, "w", encoding="utf-8") as jf:
+                #             json.dump(resultjs.get("records", resultjs), jf, ensure_ascii=False, indent=2)
+                #         logging.info(f"Wrote raw task_runs JSON to {tmpf.name} for inspection")
+                #     except Exception as e:
+                #         logging.debug(f"Could not write raw task_runs JSON to temp file: {e}")
+                # except Exception as e:
+                #     logging.debug(f"Exception while debugging task_runs DataFrame: {e}")
 
 
 

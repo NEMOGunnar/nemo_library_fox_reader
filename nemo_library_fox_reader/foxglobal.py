@@ -181,6 +181,13 @@ class FoxGlobal:
     
     # coupled attributes
     num_coupled_attributes: Optional[int] = None
+
+    # nemo data
+    nemo_project_name: Optional[str] = None
+    nemo_environment: Optional[str] = None
+    nemo_tenant: Optional[str] = None
+    nemo_is_new_project: Optional[bool] = None
+
     
     
     def to_dict(self):

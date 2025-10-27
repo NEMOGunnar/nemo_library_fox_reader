@@ -44,6 +44,7 @@ class IssueType(Enum):
     CASEDESCRIMINATION = "case_discrimination"
     FUNCTIONCALL = "function_call"
     AGGREGATIONWITHANALYSISGROUP = "aggregation_with_analysis_group"
+    NUMBERSTRINGCONCATENATION = "number_string_concatenation"
     UNSUPPORTEDFORMAT = "unsupported_format"
     IMAGESSHOWN = "images_shown"
     HTMLLINKSUSED = "html_links_used"
@@ -53,4 +54,5 @@ class IssueType(Enum):
     TAGHANDLING = "tag_handling"
     COMMENT = "comment"
     OLAPTREEITEMS = "olap_tree_items"
+    DATABASEASSISTANTUSED = "database_assistant_used"
     COLUMNNUMBER = "column_number"

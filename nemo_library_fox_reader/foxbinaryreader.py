@@ -36,7 +36,9 @@ class FoxBinaryReader:
             ValueError: If the expected number of bytes cannot be read.
         """
         data = self.stream.read(num)
+
         if len(data) != num:
+            logging.debug(f"Expected {num} bytes but got  {len(data)}: {data}")
             raise ValueError(f"Expected {num} bytes but got {len(data)}.")
         return data
 
@@ -47,6 +49,15 @@ class FoxBinaryReader:
             bool: The boolean value read.
         """
         return struct.unpack("I", self.read_bytes(4))[0] != 0
+
+    def read_byte(self) -> int:
+        """
+        Read a 1-byte  integer from the stream.
+        Returns:
+            int: The short integer value read.
+        """
+        bytes = self.read_bytes(1)
+        return bytes[0]
 
     def read_short_int(self) -> int:
         """
@@ -80,7 +91,7 @@ class FoxBinaryReader:
         """
         return self.read_bytes(2).decode("utf-16le")
 
-    def read_CString(self) -> str:
+    def read_CString_old(self) -> str:
         """
         Read a CString (UTF-16LE) from the stream.
         Returns:
@@ -94,6 +105,152 @@ class FoxBinaryReader:
             raise ValueError(f"BOM does not match UTF-16LE. Found: {utf16le_bom.hex()}")
         length = prefix[3]
         return self.read_bytes(2 * length).decode("utf-16le")
+
+    def read_CString(self) -> str:
+        """
+        Read a CString (UTF-16LE) from the stream.
+        Returns:
+            str: The decoded string.
+        Raises:
+            ValueError: If the BOM does not match UTF-16LE.
+        """
+        utf16le_bom = self.read_bytes(2) 
+        if utf16le_bom != b"\xff\xfe":
+            raise ValueError(f"BOM does not match UTF-16LE. Found: {utf16le_bom.hex()}")
+        length = self.read_CString_length()
+        return self.read_bytes(2 * length).decode("utf-16le")
+        
+    def read_CString_length(self) -> int:
+        """
+        Read a variable-length integer like MFC's AfxReadStringLength().
+        Returns:
+            int: The decoded string length.
+        """
+        first = self.read_byte()
+        if first < 0x80:
+            # 1-byte length (0–127)
+            return first
+        elif first < 0xC0:
+            # 2-byte length
+            second = self.read_byte()
+            return ((first & 0x3F) << 8) | second
+        elif first < 0xE0:
+            # 4-byte length (3 extra bytes)
+            second = self.read_byte()
+            third = self.read_byte()
+            fourth = self.read_byte()
+            return ((first & 0x1F) << 24) | (second << 16) | (third << 8) | fourth
+        elif first == 0xFF:
+            # 4-Byte Zahl Little-Endian
+            return int.from_bytes(self.read_bytes(4), "little")
+        else:
+            raise ValueError(f"Invalid length prefix: {first:02X}")
+    
+## code by co-pilot, not working properly
+    # def read_CString(self) -> str:
+    #     """
+    #     Read a CString (UTF-16LE) from the stream in a robust way.
+    #     Supports multiple header encodings observed in FOX files:
+    #       - BOM present at bytes 0-1, length in bytes 2-3 (16-bit little-endian length)
+    #       - No BOM, length in bytes 0-1 (16-bit little-endian)
+    #       - Short form length in prefix[3] (1-byte length)
+    #     Returns:
+    #         str: The decoded string (empty string for length 0 or on unrecoverable errors).
+    #     """
+    #     # remember stream position so we can rewind on decode failures (if seekable)
+    #     stream_pos = None
+    #     try:
+    #         stream_pos = self.stream.tell()
+    #     except Exception:
+    #         stream_pos = None
+    #     data = None
+
+    #     prefix = self.read_bytes(4)
+    #     utf16le_bom = prefix[0:2]
+
+    #     # If BOM present, use the (bytes 2-3) 16-bit length
+    #     if utf16le_bom == b"\xff\xfe":
+    #         long_length = int.from_bytes(prefix[2:4], byteorder="little", signed=False)
+    #         if long_length == 0:
+    #             return ""
+    #         data = b""
+    #         try:
+    #             data = self.read_bytes(2 * long_length)
+    #             return data.decode("utf-16le")
+    #         except UnicodeDecodeError as ude:
+    #             logging.debug(f"Unicode decode failed for long form CString (len={long_length}): {ude}")
+    #             # attempt to rewind and try short form if possible
+    #             if stream_pos is not None and hasattr(self.stream, "seek"):
+    #                 try:
+    #                     self.stream.seek(stream_pos)
+    #                     prefix2 = self.read_bytes(4)
+    #                     short_length = prefix2[3]
+    #                     if short_length == 0:
+    #                         return ""
+    #                     data2 = self.read_bytes(2 * short_length)
+    #                     return data2.decode("utf-16le")
+    #                 except Exception as e:
+    #                     logging.debug(f"Fallback short-form CString read failed: {e}")
+    #             # last resort: decode with replacement to avoid exceptions
+    #             try:
+    #                 return data.decode("utf-16le", errors="replace")
+    #             except Exception:
+    #                 return ""
+
+    #     # No BOM - try alternate interpretations. Many files use prefix[0:2] as the length
+    #     logging.debug(f"No UTF-16LE BOM in CString prefix: {prefix.hex()} - trying alternate length interpretations")
+
+    #     len_from_start = int.from_bytes(prefix[0:2], byteorder="little", signed=False)
+    #     if len_from_start == 0:
+    #         return ""
+
+    #     # If stream is seekable, try length interpretations rewinding between attempts
+    #     if stream_pos is not None and hasattr(self.stream, "seek"):
+    #         for attempt_name, length_val in (("len_from_start", len_from_start), ("short", prefix[3])):
+    #             try:
+    #                 self.stream.seek(stream_pos)
+    #                 # re-read header
+    #                 _ = self.read_bytes(4)
+    #                 if length_val == 0:
+    #                     return ""
+    #                 bts = self.read_bytes(2 * int(length_val))
+    #                 try:
+    #                     return bts.decode("utf-16le")
+    #                 except UnicodeDecodeError:
+    #                     logging.debug(f"Attempt {attempt_name} decode failed (len={length_val})")
+    #                     continue
+    #             except Exception as e:
+    #                 logging.debug(f"Attempt {attempt_name} failed to read/decode: {e}")
+    #                 continue
+
+    #     # Not seekable - best-effort using the prefix we already consumed
+    #     try:
+    #         data = self.read_bytes(2 * len_from_start)
+    #         try:
+    #             return data.decode("utf-16le")
+    #         except UnicodeDecodeError:
+    #             logging.debug(f"Decode failed for len_from_start={len_from_start}; trying short form if possible")
+    #     except Exception as e:
+    #         logging.debug(f"Could not read bytes for len_from_start={len_from_start}: {e}")
+
+    #     # try short form using prefix[3]
+    #     try:
+    #         short_len = prefix[3]
+    #         data2 = self.read_bytes(2 * short_len)
+    #         return data2.decode("utf-16le")
+    #     except Exception:
+    #         pass
+
+    #     # Last resort: decode what we have with replacement or return empty
+    #     try:
+    #         if 'data' in locals() and data is not None:
+    #             return data.decode("utf-16le", errors="replace")
+    #     except Exception:
+    #         pass
+    #     return ""
+
+
+
 
     def read_compressed_string(self) -> str:
         """
