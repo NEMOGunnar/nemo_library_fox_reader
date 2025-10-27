@@ -91,7 +91,7 @@ class FoxBinaryReader:
         """
         return self.read_bytes(2).decode("utf-16le")
 
-    def read_CString_old(self) -> str:
+    def read_CString(self) -> str:
         """
         Read a CString (UTF-16LE) from the stream.
         Returns:
@@ -106,7 +106,7 @@ class FoxBinaryReader:
         length = prefix[3]
         return self.read_bytes(2 * length).decode("utf-16le")
 
-    def read_CString(self) -> str:
+    def read_CString_new(self) -> str:
         """
         Read a CString (UTF-16LE) from the stream.
         Returns:
