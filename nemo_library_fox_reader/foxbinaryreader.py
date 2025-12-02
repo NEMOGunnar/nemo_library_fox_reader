@@ -91,7 +91,7 @@ class FoxBinaryReader:
         """
         return self.read_bytes(2).decode("utf-16le")
 
-    def read_CString(self) -> str:
+    def read_CString_old(self) -> str:
         """
         Read a CString (UTF-16LE) from the stream.
         Returns:
@@ -100,13 +100,15 @@ class FoxBinaryReader:
             ValueError: If the BOM does not match UTF-16LE.
         """
         prefix = self.read_bytes(4)
+        print(' '.join(f'{byte:02x}' for byte in prefix), end=' ') 
+        
         utf16le_bom = prefix[0:2]
         if utf16le_bom != b"\xff\xfe":
             raise ValueError(f"BOM does not match UTF-16LE. Found: {utf16le_bom.hex()}")
         length = prefix[3]
         return self.read_bytes(2 * length).decode("utf-16le")
 
-    def read_CString_new(self) -> str:
+    def read_CString(self) -> str:
         """
         Read a CString (UTF-16LE) from the stream.
         Returns:
@@ -114,13 +116,29 @@ class FoxBinaryReader:
         Raises:
             ValueError: If the BOM does not match UTF-16LE.
         """
-        utf16le_bom = self.read_bytes(2) 
+        prefix = self.read_bytes(3)
+        utf16le_bom = prefix[0:2]
         if utf16le_bom != b"\xff\xfe":
             raise ValueError(f"BOM does not match UTF-16LE. Found: {utf16le_bom.hex()}")
         length = self.read_CString_length()
         return self.read_bytes(2 * length).decode("utf-16le")
         
     def read_CString_length(self) -> int:
+        """
+        Returns:
+            int: The decoded string length.
+        """
+        first = self.read_bytes(1)[0]
+        if first != 0xFF:
+            return first
+        else:
+            second_and_third = self.read_bytes(2)
+            if second_and_third != b'\xff\xff':
+                return struct.unpack('h', second_and_third)[0]
+            else:
+                return self.read_int() #Nochmal 4 Bytes, also Nr. 4-7
+
+    def read_CString_length_old(self) -> int:
         """
         Read a variable-length integer like MFC's AfxReadStringLength().
         Returns:
@@ -142,7 +160,9 @@ class FoxBinaryReader:
             return ((first & 0x1F) << 24) | (second << 16) | (third << 8) | fourth
         elif first == 0xFF:
             # 4-Byte Zahl Little-Endian
-            return int.from_bytes(self.read_bytes(4), "little")
+            xxxx = self.read_int()
+            return xxxx
+            # return int.from_bytes(self.read_bytes(4), "little")
         else:
             raise ValueError(f"Invalid length prefix: {first:02X}")
     

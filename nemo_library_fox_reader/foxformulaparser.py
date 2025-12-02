@@ -95,7 +95,7 @@ class FoxFormulaParser:
     ?factor: atom
             | "-" factor                       -> neg
             | "+" factor                       -> pos
-            | "(" expr ")"
+            | "(" expr ")"                     -> paren_expr 
 
     ?atom: varref
         | func_call

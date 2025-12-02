@@ -81,16 +81,26 @@ class FOXFile:
             columns = []
             values = []
             for attr in attributes:
-                if attr.attribute_type in [FOXAttributeType.Normal, FOXAttributeType.Expression]:
+#                if attr.attribute_type in [FOXAttributeType.Normal, FOXAttributeType.Expression]:
+                # if attr.attribute_type not in [FOXAttributeType.Header, FOXAttributeType.Link]:
+                if attr.attribute_type not in [FOXAttributeType.Header, FOXAttributeType.Link, FOXAttributeType.Expression]:
                     columns.append(attr.get_nemo_name())
                     values.append(attr.values)
 
             # Transpose rows/columns: zip(*values) converts list-of-columns to list-of-rows
             df = pd.DataFrame(data=list(zip(*values)), columns=columns)
 
+            # print("C rows =", len(df))
+            # print("C cols  =", df.shape[1])
+            # print("C shape =", df.shape)
+            # print("C columns =", df.columns.tolist())
+            # print(df.head())
+
+
             # data type conversions
             for attr in attributes:
-                if attr.attribute_type in [FOXAttributeType.Normal, FOXAttributeType.Expression]:
+                if attr.attribute_type == FOXAttributeType.Normal:
+                # if attr.attribute_type in [FOXAttributeType.Normal, FOXAttributeType.Expression]:
                     match attr.nemo_data_type:
 
                         case "date":
@@ -158,6 +168,12 @@ class FOXFile:
         thousands_sep = None
         decimal_sep = None
         unique_thousands = [" ", "’", "'"]
+
+        if attr.attribute_name == "Alter":
+            delasap = 42
+            
+        if attr.format == "####":
+            return ("integer", None, None)
 
         # remove + and - first, we don't need it
         pattern_clean = attr.format.replace("+", "").replace("-", "")
@@ -313,8 +329,14 @@ class FOXFile:
         """
         reader = self.binary_reader
 
+        self.isReadingProalpha = False   
         version_full = reader.read_bytes(52).decode("ascii")
         version_short = version_full[38:51]
+        if version_short.startswith("="):
+            version_short = version_full[39:52]
+            self.isReadingProalpha = True
+            unused = reader.read_bytes(1)
+
         if version_short.startswith("="):
             version_short = version_full
             logging.warning('Version string started with character "=" -> removed!')
@@ -449,12 +471,16 @@ class FOXFile:
             global_information.transform_vertical_bars = reader.read_bool()
 
         global_information.import_with_fixed_column_width = reader.read_bool()
+        if global_information.import_with_fixed_column_width:
+            if self.foxReaderInfo:
+                self.foxReaderInfo.add_issue(IssueType.FIXEDCOLUMNWIDTH)
+
         global_information.num_columns = reader.read_int()
         if global_information.num_columns > 0:
             if self.foxReaderInfo:
-                self.foxReaderInfo.add_issue(IssueType.COLUMNNUMBER)
-            else:
-                raise NotImplementedError("NrOfColumns>0 is not yet supported")
+                self.foxReaderInfo.add_issue(IssueType.COLUMNWIDTHUSED)
+            for _ in range(global_information.num_columns):
+                reader.read_int()  # lColumnWidths (unused)
 
         global_information.import_attribute_names = reader.read_bool()
         global_information.import_attribute_line = reader.read_int()
@@ -490,9 +516,9 @@ class FOXFile:
                 global_information.serialized_database_join_info = (
                     reader.read_compressed_string()
                 )
-            if global_information.serialized_database_join_info:
-                if self.foxReaderInfo:
-                    self.foxReaderInfo.add_issue(IssueType.DATABASEASSISTANTUSED, extra_info=f"length serialized_database_join_info={len(global_information.serialized_database_join_info)}")
+            # if global_information.serialized_database_join_info:
+            #     if self.foxReaderInfo:
+            #         self.foxReaderInfo.add_issue(IssueType.DATABASEASSISTANTUSED, extra_info=f"length serialized_database_join_info={len(global_information.serialized_database_join_info)}")
 
         if version_short >= "FOX2014/10/08":
             global_information.excel_file = reader.read_compressed_string()
@@ -589,10 +615,13 @@ class FOXFile:
             attribute_name = reader.read_CString()
             logging.info(f"Reading attribute: {_} {attribute_name}")
 
+            display_children = False
             if len(attribute_name) > 1 and attribute_name[0] == "+":
                 attribute_name = attribute_name[
                     1:
                 ]  # remove leading '+' - in attribute groups an indicator that the group is expanded
+                display_children = True
+
             attribute_id = reader.read_int()
             attr = FoxAttribute(
                 attribute_name=attribute_name,
@@ -634,6 +663,10 @@ class FOXFile:
             attr.multiple_values = reader.read_bool()
             attr.max_multiple_values = reader.read_int()
             attr.is_header = reader.read_bool()
+            if attr.is_header:
+                attr.display_children = display_children
+                logging.info(f"Attribute '{attr.attribute_name}' is a header attribute. Display children: {attr.display_children} ")
+
             attr.is_link = reader.read_bool()
 
             attr.can_drill_down = reader.read_bool()
@@ -666,6 +699,8 @@ class FOXFile:
             if global_information.version_short >= "FOX2019/07/25":
                 attr.individual_background_color = reader.read_bool()
                 reader.read_bytes(4)  # ignore 4 bytes
+            if self.isReadingProalpha:
+                reader.read_int()  # ignore 4 bytes
 
             try:
                 attr.attribute_type = FOXAttributeType(reader.read_int())
@@ -713,6 +748,7 @@ class FOXFile:
                 attr.classified_attribute_index = reader.read_int()
                 attr.num_value_ranges = reader.read_int()
                 expression = ""
+                # collect per-range metadata so we can later build a nested IF expression
                 for i in range(attr.num_value_ranges):
                     op = reader.read_int()
                     threshold = reader.read_double()
@@ -725,10 +761,22 @@ class FOXFile:
                     
                     logging.info(f"Classification attribute detected '{attr.attribute_name}': range {i}, op={op}, threshold={threshold}, s_threshold={s_threshold}, s_class_value={s_class_value}, num_values={num_values}")
 
+                    # read the optional discrete values for IN operator and also store
+                    values_list = []
                     for j in range(num_values):
                         key = f"range_{i}_value_{j}"
                         val = reader.read_compressed_value(attr.attribute_name, [], "", 1)
                         attr.classification_values[key] = val
+                        values_list.append(val)
+
+                    # store range metadata for later expression building
+                    attr.classification_ranges.append({
+                        "op": op,
+                        "threshold": threshold,
+                        "s_threshold": s_threshold,
+                        "s_class_value": s_class_value,
+                        "values": values_list,
+                    })
                 attr.user_defined_order = reader.read_bool()
 
             if attr.attribute_type == FOXAttributeType.CaseDiscrimination:
@@ -773,11 +821,22 @@ class FOXFile:
 
             attr.permanently_hidden = reader.read_int()
 
+            if attr.permanently_hidden != 0 or not attr.shown:
+                if self.foxReaderInfo:
+                    if attr.permanently_hidden != 0:
+                        self.foxReaderInfo.add_issue(IssueType.ATTRIBUTEPERMANENTLYHIDDEN, attr.attribute_name, "", attr.format, extra_info="")
+                        logging.info(f"Attribute '{attr.attribute_name}' is permanently hidden.")
+                    else:
+                        self.foxReaderInfo.add_issue(IssueType.ATTRIBUTETEMPORARYHIDDEN, attr.attribute_name, "", attr.format, extra_info="")
+                        logging.info(f"Attribute '{attr.attribute_name}' is temporary hidden.")
+
+
             if global_information.version_short >= "FOX2010/06/16":
                 attr.allow_edit_comment = reader.read_int()
 
             attr.coupled = reader.read_bool()
             if attr.coupled:
+                logging.info(f"Attribute '{attr.attribute_name}' '{attr.uuid}' is coupled.")
                 attr.coupling_extras = [reader.read_int() for _ in range(4)]
 
             # Read values if applicable
@@ -814,6 +873,9 @@ class FOXFile:
                 )
 
                 attr.values = [value_store[i] for i in index_array]
+                for val in attr.values:
+                    if len(val) > 500:
+                        logging.warning(f"Value too long in attribute '{attr.attribute_name}': '{val[:100]}...{val[-100:]}'")
 
                 attr.value_frequency_coloring = reader.read_bool()
                 if attr.value_frequency_coloring:
@@ -833,7 +895,16 @@ class FOXFile:
 
             # guess data conversion information
             if attr.attribute_type == FOXAttributeType.Normal:
+            # if attr.attribute_type != FOXAttributeType.Header:
                 self._guess_data_conversion(attr)
+
+            if attr.attribute_type == FOXAttributeType.Expression:
+                self._guess_data_conversion(attr)
+                logging.info(f"Expression attribute '{attr.attribute_name}'  '{attr.format}'   '{attr.nemo_data_type}'")
+
+            if attr.attribute_type == FOXAttributeType.CaseDiscrimination:
+                self._guess_data_conversion(attr)
+                logging.info(f"CaseDiscrimination attribute '{attr.attribute_name}'  '{attr.format}'   '{attr.nemo_data_type}'")
 
             attributes.append(attr)
 

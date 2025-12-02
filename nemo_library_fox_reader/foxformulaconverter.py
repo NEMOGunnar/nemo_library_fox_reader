@@ -34,9 +34,6 @@ class FoxFormulaConverter:
         if not self.parser.is_valid:
             raise ValueError(f"FoxFormulaConverter parser error  INVALID EXPRESSION:'{expression}'")
 
-        # if expression=='if([X0] < 3,"#1#klein",if([X0] < 10,"#2#mittel","#3#gross"))':
-        #     delasap = 42
-
         formula = self.inspect_tree(tree, "")
 
         # logging.info(f"get_nemo_formula_from_infozoom_expresion   formula='{formula}'  expression='{expression}'")
@@ -114,7 +111,10 @@ class FoxFormulaConverter:
             # case "args":
             case "arg_list":
                 formula_part = self.match_args(tree, formula_part)
-                
+
+            case "paren_expr":
+                formula_part = self.match_paren_expr(tree, formula_part)
+
             case "string": #"ESCAPED_STRING":
                 value_str = self.get_token(tree.children[0])
                 if value_str == '""' or len(value_str) == 0:
@@ -159,12 +159,28 @@ class FoxFormulaConverter:
 
         return formula_part
 
+    def match_paren_expr(self, tree: Tree, formula_part: str) -> str:
+        try:
+            formula_part = formula_part + '('
+            formula_part = self.inspect_tree(tree.children[0], formula_part)
+            formula_part = formula_part + ")"
+
+        except Exception as e:
+            logging.warning(f"Exception FoxFormulaConverter.match_if_expr: {e}")
+
+        return formula_part
 
     def match_function(self, tree: Tree, formula_part: str) -> str:
         try:
             token = f"{self.get_token(tree.children[0])}"
-            token = token.upper()
-            formula_part = formula_part + f"{token} ("
+            token = token.lower()
+            without_paratheses = token in ["today","now"]
+            if without_paratheses:  
+                token = token.upper()
+
+            formula_part = formula_part + f"{token}"
+            if not without_paratheses:
+                formula_part = formula_part + ' ('
 
             if tree.children[1]:
                 child_args = tree.children[1].children[0]
@@ -188,7 +204,8 @@ class FoxFormulaConverter:
                 #         formula_part = " , " + formula_part
                 #     formula_part = self.inspect_tree(child_arg, formula_part)
 
-            formula_part = formula_part + ') '
+            if not without_paratheses:
+                formula_part = formula_part + ') '
 
             if self.foxReaderInfo:
                 self.foxReaderInfo.add_issue(IssueType.FUNCTIONCALL, self.attr.attribute_name, None, self.attr.format, extra_info=token)

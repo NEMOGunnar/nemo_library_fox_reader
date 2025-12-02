@@ -14,6 +14,7 @@ class FoxAttribute:
     level: int = 0
     parent_index: Optional[int] = None
     uuid: Optional[str] = None
+    display_children: bool = False
 
     # Optional tag handling (unimplemented)
     number_of_tags: Optional[int] = None

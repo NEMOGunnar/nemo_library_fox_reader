@@ -56,6 +56,13 @@ def ReUploadDataFrame(
     if import_configuration is None:
         import_configuration = ImportConfigurations()
 
+
+    # print("A rows =", len(df))
+    # print("A cols  =", df.shape[1])
+    # print("A shape =", df.shape)
+    # print("A columns =", df.columns.tolist())
+    # print(df.head())
+
     # format data? we need to import first and then use the upload dataframe api
     if format_data:
         df = _format_data(df, import_configuration)
@@ -168,6 +175,12 @@ def ReUploadFile(
                     # pass
                 
                 df = foxfile.read()
+                # print("B rows =", len(df))
+                # print("B cols  =", df.shape[1])
+                # print("B shape =", df.shape)
+                # print("B columns =", df.columns.tolist())
+                # print(df.head())
+
                 meta = FOXMeta(foxfile, foxReaderInfo=foxReaderInfo)
                 meta.reconcile_metadata(config=config, projectname=projectname, statistics_only=statistics_only)
             finally:
@@ -395,6 +408,8 @@ def ReUploadFile(
                     break
                 time.sleep(1 if version == 2 else 5)
 
+        update_defined_columns(config, projectname)
+
         # Trigger Analyze Table Task for version 2 if required
         if version == 2 and update_project_settings:
             data = {
@@ -454,6 +469,42 @@ def ReUploadFile(
     finally:
         if gzipped_filename:
             os.remove(gzipped_filename)
+
+
+def update_defined_columns(config: Config, projectname: str) -> None:
+    try:
+        cols = getColumns(config, projectname)
+        columns_to_update = []
+        for col in cols:
+            if col.columnType == "DefinedColumn":
+                columns_to_update.append(col)
+                logging.info(f"Updating defined column '{col.internalName}'   conflictState={col.conflictState}")
+
+        createColumns(config, projectname, columns_to_update)
+
+        logging.info(f"Updating defined columns successful")
+
+                # col_id = col.id
+                # data = {
+                #     "conflictState": col.conflictState,
+                # }
+                # headers = config.connection_get_headers()
+                # response = requests.put(
+                #     config.get_config_nemo_url()
+                #     + f"/api/nemo-persistence/metadata/AttributeTree/projects/{{projectId}}/definedColumns/{{columnId}}".format(
+                #         projectId=getProjectID(config, projectname), columnId=col_id
+                #     ),
+                #     headers=headers,
+                #     json=data,
+                # )
+                # if response.status_code != 200:
+                #     raise Exception(
+                #         f"Request failed. Status: {response.status_code}, error: {response.text}"
+                #     )
+                # logging.info(f"Defined column '{col.displayName}' updated successfully.")
+    except Exception as e:
+        logging.warning(f"Failed to update defined columns: {e}")
+        pass
 
 
 def _get_file_size(filepath: str):

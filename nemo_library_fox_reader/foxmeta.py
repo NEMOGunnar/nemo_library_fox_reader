@@ -4,10 +4,9 @@ import logging
 
 from nemo_library.features.focus import focusMoveAttributeBefore
 from nemo_library_fox_reader.foxfile import FOXFile
-from nemo_library_fox_reader.foxformulaparser import FoxFormulaParser
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 from nemo_library_fox_reader.foxstatisticsinfo import IssueType
-from nemo_library.features.nemo_persistence_api import (
+from nemo_library_fox_reader.foxnemo_persistence_api import (
     createAttributeGroups,
     createAttributeLinks,
     createColumns,
@@ -88,7 +87,7 @@ class FOXMeta:
         attributelinks_fox = self._get_fox_columns_LINK()
 
         # for c in columns_fox:
-        #     logging.info(f">>>>>>>>>>>>>> columns_fox: '{c.displayName}'  '{c.internalName}'")
+        #     logging.info(f">>>>>>>>>>>>>> columns_fox: '{c.dataType}  {c.displayName}'  '{c.internalName}'")
 
         # log unsupported attribute types
         # TODO: implement support for these attribute types
@@ -115,10 +114,36 @@ class FOXMeta:
                 ],
             )
 
+        # split columns in ExportedColumns and DefindedColumns
+        exported_columns_fox = [col for col in columns_fox if col.columnType == "ExportedColumn"]
+        defined_columns_fox = [col for col in columns_fox if col.columnType == "DefinedColumn"]
+        other_columns_fox = [col for col in columns_fox if (col.columnType != "DefinedColumn" and col.columnType != "ExportedColumn")]
+
+        for c in attributegroups_fox:
+            logging.info(f"Group: '{c.internalName}' {c.attributeGroupType}  '{c.parentAttributeGroupInternalName}'")
+        for c in attributelinks_fox:
+            logging.info(f"Link: '{c.internalName}' {c.sourceAttributeId}  '{c.parentAttributeGroupInternalName}'")
+        for c in exported_columns_fox:
+            logging.info(f"Exported: '{c.internalName}'  '{c.parentAttributeGroupInternalName}'  {c.dataType}")
+        for c in defined_columns_fox:
+            logging.info(f"Defined: '{c.internalName}'  '{c.parentAttributeGroupInternalName}'  {c.dataType}")
+        for c in other_columns_fox:
+            logging.info(f"Other: '{c.internalName}' {c.columnType}  '{c.parentAttributeGroupInternalName}'  {c.dataType}")
+
+        # merge ExportedColumns, DefinedColumns and Other columns into a single flat list
+        # so further processing (create/update/delete) can treat them all as 'columns'
+        # columns_fox = []
+        # columns_fox.extend(exported_columns_fox)
+        # columns_fox.extend(defined_columns_fox)
+        # columns_fox.extend(other_columns_fox)
+
         # load current metadata from NEMO project
         nemo_lists = {}
         methods = {
             "columns": getColumns,
+            # "exported_columns": getColumns,
+            # "defined_columns": getColumns,
+            # "other_columns": getColumns,
             "attributegroups": getAttributeGroups,
             "attributelinks": getAttributeLinks,
         }
@@ -179,6 +204,9 @@ class FOXMeta:
 
         for key, model_list, nemo_list in [
             ("columns", columns_fox, nemo_lists["columns"]),
+            # ("exported_columns", exported_columns_fox, nemo_lists["exported_columns"]),
+            # ("defined_columns", defined_columns_fox, nemo_lists["defined_columns"]),
+            # ("other_columns", other_columns_fox, nemo_lists["other_columns"]),
             ("attributegroups", attributegroups_fox, nemo_lists["attributegroups"]),
             ("attributelinks", attributelinks_fox, nemo_lists["attributelinks"]),
         ]:
@@ -196,6 +224,9 @@ class FOXMeta:
             "attributelinks": deleteAttributeLinks,
             "attributegroups": deleteAttributeGroups,
             "columns": deleteColumns,
+            # "exported_columns": deleteColumns,
+            # "defined_columns": deleteColumns,
+            # "other_columns": deleteColumns,
         }
 
         for key, delete_function in delete_functions.items():
@@ -208,12 +239,30 @@ class FOXMeta:
         create_functions = {
             "attributegroups": createAttributeGroups,
             "columns": createColumns,
+            # "exported_columns": createColumns,
+            # "defined_columns": createColumns,
+            # "other_columns": createColumns,
             "attributelinks": createAttributeLinks,
         }
 
         for key, create_function in create_functions.items():
             # create new objects first
             if creates[key]:
+                # createColumns(
+                #     config=config, projectname=projectname, **{key: creates[key]}
+                # )
+                # if key == "exported_columns":
+                #     create_function(
+                #         config=config, projectname=projectname, **{"columns": creates[key]}
+                #     )
+                # if key == "defined_columns":
+                #     create_function(
+                #         config=config, projectname=projectname, **{"columns": creates[key]}
+                #     )
+                # if key == "other_columns":
+                #     create_function(
+                #         config=config, projectname=projectname, **{"columns": creates[key]}
+                #     )
                 create_function(
                     config=config, projectname=projectname, **{key: creates[key]}
                 )
@@ -224,9 +273,6 @@ class FOXMeta:
                 )
 
         # finally, adjust order of objects in NEMO project
-        # logging.info("USI: REMOVED:  Adjusting order of objects in NEMO project...")
-        #USI self._adjust_order(config=config, projectname=projectname)
-
         logging.info("Adjusting order of objects in NEMO project...")
         self._adjust_order(config=config, projectname=projectname)
 
@@ -385,6 +431,7 @@ class FOXMeta:
                         parentAttributeGroupInternalName=self._get_parent_internal_name(
                             attr
                         ),
+                        display_children = attr.display_children,
                         attributeGroupType=self._get_attribute_group_type(attr),
                     )
                 )
@@ -424,10 +471,11 @@ class FOXMeta:
 
                 function_not_supported = False
                 function = SUMMARY_FUNCTIONS.get(attr.function,None)
+                
                 # if we do not support this function, we have to convert as a normal attribute
                 if not function:
                     logging.warning(f"Summary function {attr.function} not supported for attribute {attr.attribute_name}. Attribute {attr.get_nemo_name()} will be used as normal attribute")
-                    # attr.nemo_not_supported = True  # mark as not supported for now
+
                     function_not_supported = True
 
                     if self.foxReaderInfo:
@@ -443,9 +491,10 @@ class FOXMeta:
                 # )
 
                 if attribute2 and self._get_attribute_group_type(attribute2) == "Analysis":
-                    logging.info(
-                        f"AGGREGATIONWITHANALYSISGROUP detected {SUMMARY_FUNCTIONS_ALL.get(attr.function,None)}  {attr.attribute_name}, {attribute1.attribute_name}, {attribute2.attribute_name}."
-                    )
+                    function_not_supported = True # mark as not supported until supported in NEMO
+                    # logging.info(
+                    #     f"AGGREGATIONWITHANALYSISGROUP detected {SUMMARY_FUNCTIONS_ALL.get(attr.function,None)}  {attr.attribute_name}, {attribute1.attribute_name}, {attribute2.attribute_name}."
+                    # )
                     if self.foxReaderInfo:
                         self.foxReaderInfo.add_issue(IssueType.AGGREGATIONWITHANALYSISGROUP, attr.attribute_name, SUMMARY_FUNCTIONS_ALL.get(attr.function,None), attr.format, extra_info=f"'{attribute1.attribute_name}' '{attribute2.attribute_name}'")
                     
@@ -491,7 +540,7 @@ class FOXMeta:
                         ),
                         columnType="ExportedColumn",
                         unit=attr.nemo_unit,
-                )
+                    )
                     columns.append(column)
 
         return columns
@@ -509,36 +558,36 @@ class FOXMeta:
 
                 try:
                     fox_formula_converter = FoxFormulaConverter(attr, self.attributes, self.foxReaderInfo)
-                    formula2 = fox_formula_converter.get_nemo_formula_from_infozoom_expression(formula)
-                
-                    formula = formula2
+                    formula = fox_formula_converter.get_nemo_formula_from_infozoom_expression(formula)
+
                     is_valid_formula_parsed = True
                 except Exception as exception:
                     self.foxReaderInfo.add_exception(exception)
                     pass
 
-                nemo_data_type = "string"
+                nemo_data_type = attr.nemo_data_type
+                # nemo_data_type = "string"
 
-                try:
-                    for i in range(attr.num_referenced_attributes):
-                        refId = int(attr.referenced_attributes[i])
-                        referenced_attribute = next(
-                            (
-                                a
-                                for a in self.attributes
-                                if a.attribute_id == refId
-                            ),
-                            None,
-                        )
-                        if referenced_attribute:
-                            # set the data_type of the column to the data type of the data type of the first referenced attribute
-                            if nemo_data_type == "string":
-                                nemo_data_type = referenced_attribute.nemo_data_type
+                # try:
+                #     for i in range(attr.num_referenced_attributes):
+                #         refId = int(attr.referenced_attributes[i])
+                #         referenced_attribute = next(
+                #             (
+                #                 a
+                #                 for a in self.attributes
+                #                 if a.attribute_id == refId
+                #             ),
+                #             None,
+                #         )
+                #         if referenced_attribute:
+                #             # set the data_type of the column to the data type of the data type of the first referenced attribute
+                #             if nemo_data_type == "string":
+                #                 nemo_data_type = referenced_attribute.nemo_data_type
 
 
-                except Exception as e:
-                    logging.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Exception loop referenced_attributes  num_referenced_attributes={attr.num_referenced_attributes}  i={i}")
-                    pass
+                # except Exception as e:
+                #     logging.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Exception loop referenced_attributes  num_referenced_attributes={attr.num_referenced_attributes}  i={i}")
+                #     pass
 
                 if not nemo_data_type:
                     nemo_data_type = attr.nemo_data_type
@@ -556,10 +605,10 @@ class FOXMeta:
                             unit=attr.nemo_unit,
                         )
                 columns.append(column)
-                logging.info(f"Expression: '{attr.attribute_name}'  expression='{attr.expression_string}' formula='{formula}'")
+                logging.info(f"Expression: '{attr.attribute_name}'  format='{attr.format}' => '{nemo_data_type}'  formula='{formula}'")
                 
-                if self.foxReaderInfo:
-                    self.foxReaderInfo.add_issue(IssueType.EXPRESSION, attr.attribute_name, attr.expression_string, attr.format, extra_info=formula)
+                # if self.foxReaderInfo:
+                #     self.foxReaderInfo.add_issue(IssueType.EXPRESSION, attr.attribute_name, attr.expression_string, attr.format, extra_info=formula)
         return columns
 
     def _get_fox_columns_LINKS_with_DATEDETAILS(self) -> list[Column]:
@@ -642,21 +691,116 @@ class FOXMeta:
         columns = []
         for attr in self.attributes:
             if attr.attribute_type == FOXAttributeType.Classification:
-                # attr.nemo_not_supported = True  # mark as not supported for now
-                if self.foxReaderInfo:
-                    self.foxReaderInfo.add_issue(IssueType.CLASSIFICATION, attr.attribute_name, attr.expression_string, attr.format)
+                # Build an expression from classification ranges (nested IFs)
 
-                logging.info(f"Unsupported Classification detected '{attr.attribute_name}' '{attr.get_nemo_name()}' - Attribute is used as normal attribute")
-                
+                referenced_attribute = None
+                try:
+                    ref_id = int(attr.classified_attribute_index)
+                    referenced_attribute = next(
+                        (
+                            a
+                            for a in self.attributes
+                            if a.attribute_id == ref_id
+                        ),
+                        None,
+                    )
+                except Exception:
+                    referenced_attribute = None
+
+                if not referenced_attribute:
+                    logging.info(f"Classification detected but referenced attribute with ID {attr.classified_attribute_index} not found for '{attr.attribute_name}' - importing as ExportedColumn")
+                    column = Column(
+                        displayName=get_display_name(attr.attribute_name),
+                        importName=attr.get_nemo_name(),
+                        internalName=attr.get_nemo_name(),
+                        dataType=attr.nemo_data_type,
+                        parentAttributeGroupInternalName=self._get_parent_internal_name(
+                            attr
+                        ),
+                        columnType="ExportedColumn",
+                        unit=attr.nemo_unit,
+                    )
+                    columns.append(column)
+                    continue
+
+                # helper to quote class values/numeric thresholds
+                def _quote_if_needed_for_formula(val: str) -> str:
+                    if val is None:
+                        return "'NULL'"
+                    s = str(val).strip()
+                    if s == "" or s.upper() == 'NULL':
+                        return "'NULL'"
+                    # already quoted
+                    if (s.startswith("'") and s.endswith("'")) or (s.startswith('"') and s.endswith('"')):
+                        return s
+                    # numeric?
+                    try:
+                        float(s)
+                        return s
+                    except Exception:
+                        pass
+                    # escape and quote
+                    return f"'{s.replace("'", "''")}'"
+
+                # Build nested IFs: start with default 'NULL' as the final else
+                nested = "'NULL'"
+
+                # iterate ranges in reverse so first range becomes outermost IF
+                for r in reversed(getattr(attr, 'classification_ranges', [])):
+                    op = r.get('op')
+                    threshold = r.get('threshold')
+                    s_threshold = r.get('s_threshold')
+                    s_class_value = r.get('s_class_value')
+                    values = r.get('values', []) or []
+
+                    colname = referenced_attribute.get_nemo_name()
+
+                    cond = None
+                    # map operator codes to conditions
+                    if op == 0:  # OPERATOR_LESS_EQUAL
+                        cond = f"({colname} <= {threshold})"
+                    elif op == 1:  # OPERATOR_LESS
+                        cond = f"({colname} < {threshold})"
+                    elif op == 2:  # OPERATOR_EQUAL
+                        # use numeric threshold if available, otherwise compare to s_threshold
+                        try:
+                            float(threshold)
+                            cond = f"({colname} == {threshold})"
+                        except Exception:
+                            cond = f"({colname} == {_quote_if_needed_for_formula(s_threshold)})"
+                    elif op == 3:  # OPERATOR_IN
+                        # build OR of equality checks
+                        parts = []
+                        for v in values:
+                            q = _quote_if_needed_for_formula(v)
+                            parts.append(f"({colname} == {q})")
+                        cond = f"({' OR '.join(parts)})" if parts else "(False)"
+                    elif op == 7:  # OPERATOR_ELSE
+                        cond = "(1==1)"
+                    else:
+                        # Unknown/unsupported operator (LEGAL/ILLEGAL/UNDEFINED)
+                        logging.warning(f"Unsupported classification operator {op} for attribute {attr.attribute_name}")
+                        cond = "(False)"
+
+                    then_val = _quote_if_needed_for_formula(s_class_value)
+                    nested = f"IF ({cond} , {then_val} , {nested})"
+
+                expression_string = nested
+                if self.foxReaderInfo:
+                    self.foxReaderInfo.add_issue(IssueType.CLASSIFICATION, attr.attribute_name, expression_string, attr.format)
+
+                # create a DefinedColumn using the built formula
                 column = Column(
                     displayName=get_display_name(attr.attribute_name),
                     importName=attr.get_nemo_name(),
                     internalName=attr.get_nemo_name(),
-                    dataType=attr.nemo_data_type,
+                    dataType=attr.nemo_data_type or "string",
                     parentAttributeGroupInternalName=self._get_parent_internal_name(
                         attr
                     ),
-                    columnType="ExportedColumn",
+                    # columnType="ExportedColumn",
+                    columnType="DefinedColumn",
+                    formula=expression_string,
                     unit=attr.nemo_unit,
                 )
                 columns.append(column)
@@ -762,8 +906,7 @@ class FOXMeta:
                     pass
 
                 if self.foxReaderInfo:
-                    self.foxReaderInfo.add_issue(IssueType.CASEDESCRIMINATION, attr.attribute_name, expression_string, attr.format, extra_info=f"num_cases={attr.num_cases}")
-                # logging.info(f"CaseDiscrimination detected '{attr.attribute_name}' num_cases={attr.num_cases} - Expression: {expression_string}")
+                    self.foxReaderInfo.add_issue(IssueType.CASEDESCRIMINATION, attr.attribute_name, f"num_cases={attr.num_cases}", attr.format, extra_info=expression_string)
 
                 column = Column(
                     displayName=get_display_name(attr.attribute_name),
@@ -773,6 +916,7 @@ class FOXMeta:
                     parentAttributeGroupInternalName=self._get_parent_internal_name(
                         attr
                     ),
+                    # columnType="ExportedColumn",
                     columnType="DefinedColumn",
                     formula=expression_string,
                     unit=attr.nemo_unit,
