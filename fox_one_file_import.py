@@ -41,5 +41,6 @@ statistics_only = False
 ##nl.ReUploadFile(projectname="FOX USI 84with ABC-Kunden (reduced with Trunc)",filename="fox_files/ABC-Kunden reduced with TRUNC.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 83without ABC-Kunden (reduced without Trunc)",filename="fox_files/ABC-Kunden reduced without TRUNC.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 57 ABC-Kunden",filename="fox_files/Demodaten/ABC-Kunden/ABC-Kunden.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
-##nl.ReUploadFile(projectname="FOX USI 94 Prüfung offene RG.fox",filename="fox_files/Demodaten/Prüfsoftware/Prüfung_offene_RG.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
-nl.ReUploadFile(projectname="FOX USI 92 Prüfung offene RG",filename="fox_files/Prüfung_offene_RG (ohne geschachtelte Gruppen).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+nl.ReUploadFile(projectname="FOX USI 86 Prüfung offene RG",filename="fox_files/Demodaten/Prüfsoftware/Prüfung_offene_RG.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 90 Prüfung offene RG",filename="fox_files/Prüfung_offene_RG (ohne geschachtelte Gruppen).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 97 Formula with Links",filename="fox_files/Formula with Links.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)

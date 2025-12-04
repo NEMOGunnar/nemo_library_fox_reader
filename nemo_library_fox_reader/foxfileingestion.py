@@ -477,8 +477,9 @@ def update_defined_columns(config: Config, projectname: str) -> None:
         columns_to_update = []
         for col in cols:
             if col.columnType == "DefinedColumn":
-                columns_to_update.append(col)
                 logging.info(f"Updating defined column '{col.internalName}'   conflictState={col.conflictState}")
+                col.conflictState = "NoConflict"
+                columns_to_update.append(col)
 
         createColumns(config, projectname, columns_to_update)
 

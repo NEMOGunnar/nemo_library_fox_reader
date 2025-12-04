@@ -5,6 +5,7 @@ from nemo_library_fox_reader.foxformulaparser import FoxFormulaParser
 from nemo_library_fox_reader.foxattribute import FoxAttribute
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 from nemo_library_fox_reader.foxstatisticsinfo import IssueType
+from nemo_library_fox_reader.foxutils import FOXAttributeType
 
 
 class FoxFormulaConverter:
@@ -391,6 +392,14 @@ class FoxFormulaConverter:
             ),
             None,
         )
+
+
+        while referenced_attribute and referenced_attribute.attribute_type == FOXAttributeType.Link:
+            # For link attributes, resolve to the original attribute they point to
+            original_attr_index = referenced_attribute.original_attribute_index
+            if original_attr_index is not None and original_attr_index < len(self.all_attributes):
+                logging.info(f"Resolving link attribute '{referenced_attribute.attribute_name}' to original attribute index {original_attr_index} {self.attr.attribute_name}")
+                referenced_attribute = self.all_attributes[original_attr_index]
 
         self.last_referenced_attribute = referenced_attribute
         return referenced_attribute

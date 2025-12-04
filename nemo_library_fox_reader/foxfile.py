@@ -906,6 +906,10 @@ class FOXFile:
                 self._guess_data_conversion(attr)
                 logging.info(f"CaseDiscrimination attribute '{attr.attribute_name}'  '{attr.format}'   '{attr.nemo_data_type}'")
 
+            if attr.attribute_type == FOXAttributeType.Classification:
+                self._guess_data_conversion(attr)
+                logging.info(f"Classification attribute '{attr.attribute_name}'  '{attr.format}'   '{attr.nemo_data_type}'")
+
             attributes.append(attr)
 
         # ignore id of attribute and overwrite it with the index

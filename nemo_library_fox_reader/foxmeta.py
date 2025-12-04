@@ -122,7 +122,7 @@ class FOXMeta:
         for c in attributegroups_fox:
             logging.info(f"Group: '{c.internalName}' {c.attributeGroupType}  '{c.parentAttributeGroupInternalName}'")
         for c in attributelinks_fox:
-            logging.info(f"Link: '{c.internalName}' {c.sourceAttributeId}  '{c.parentAttributeGroupInternalName}'")
+            logging.info(f"Link: '{c.internalName}' source='{c.sourceAttributeInternalName}'  '{c.parentAttributeGroupInternalName}'")
         for c in exported_columns_fox:
             logging.info(f"Exported: '{c.internalName}'  '{c.parentAttributeGroupInternalName}'  {c.dataType}")
         for c in defined_columns_fox:
@@ -342,6 +342,7 @@ class FOXMeta:
             return parent_attr.get_nemo_name()
         return None
 
+
     def _adjust_order(
         self,
         config: Config,
@@ -360,9 +361,9 @@ class FOXMeta:
             ):
 
                 # TODO: remove special handling of objects that are not supported yet
-                if attr.attribute_type == FOXAttributeType.Link:
+                if attr.attribute_type == FOXAttributeType.Link and attr.original_attribute_index is not None:
                     # search for the referenced attribute
-                    referenced_attr = self._get_referenced_attribute(attr)
+                    referenced_attr = self._get_referenced_attribute(attr.original_attribute_index)
                     if referenced_attr.nemo_not_supported:
 
                         logging.warning(
@@ -444,27 +445,28 @@ class FOXMeta:
         columns = []
         for attr in self.attributes:
             if attr.attribute_type == FOXAttributeType.Summary:
-                # attr.attribute1_index = reader.read_int()
-                # attr.attribute2_index = reader.read_int()
-                # attr.function = reader.read_int()
-                # attr.marginal_value = reader.read_int()
-                # attr.combined_format = reader.read_compressed_string()
-                attribute1 = next(
-                    (
-                        a
-                        for a in self.attributes
-                        if a.attribute_id == attr.attribute1_index
-                    ),
-                    None,
-                )
-                attribute2 = next(
-                    (
-                        a
-                        for a in self.attributes
-                        if a.attribute_id == attr.attribute2_index
-                    ),
-                    None,
-                )
+                attribute1 = self._get_referenced_attribute(attr.attribute1_index)
+
+                attribute2 = None
+                if attr.attribute2_index is not None and attr.attribute2_index != 4294967295:
+                    attribute2 = self._get_referenced_attribute(attr.attribute2_index)
+
+                # attribute1 = next(
+                #     (
+                #         a
+                #         for a in self.attributes
+                #         if a.attribute_id == attr.attribute1_index
+                #     ),
+                #     None,
+                # )
+                # attribute2 = next(
+                #     (
+                #         a
+                #         for a in self.attributes
+                #         if a.attribute_id == attr.attribute2_index
+                #     ),
+                #     None,
+                # )
 
                 if attr.attribute2_index > 0 and not attr.attribute2_index == 4294967295 and not attribute2:
                     logging.info(f"::::::::::::::::::::::::::::::: attr.attribute2_index {attr.attribute2_index} > 0 and not attribute2")
@@ -618,7 +620,7 @@ class FOXMeta:
         columns = []
         for attr in self.attributes:
             if attr.attribute_type == FOXAttributeType.Link:
-                referenced_attr = self._get_referenced_attribute(attr)
+                referenced_attr = self._get_referenced_attribute(attr.original_attribute_index)
 
                 if referenced_attr.nemo_not_supported:
                     logging.warning(
@@ -693,19 +695,20 @@ class FOXMeta:
             if attr.attribute_type == FOXAttributeType.Classification:
                 # Build an expression from classification ranges (nested IFs)
 
-                referenced_attribute = None
-                try:
-                    ref_id = int(attr.classified_attribute_index)
-                    referenced_attribute = next(
-                        (
-                            a
-                            for a in self.attributes
-                            if a.attribute_id == ref_id
-                        ),
-                        None,
-                    )
-                except Exception:
-                    referenced_attribute = None
+                referenced_attribute = self._get_referenced_attribute(attr.classified_attribute_index)
+                # referenced_attribute = None
+                # try:
+                #     ref_id = int(attr.classified_attribute_index)
+                #     referenced_attribute = next(
+                #         (
+                #             a
+                #             for a in self.attributes
+                #             if a.attribute_id == ref_id
+                #         ),
+                #         None,
+                #     )
+                # except Exception:
+                #     referenced_attribute = None
 
                 if not referenced_attribute:
                     logging.info(f"Classification detected but referenced attribute with ID {attr.classified_attribute_index} not found for '{attr.attribute_name}' - importing as ExportedColumn")
@@ -775,12 +778,14 @@ class FOXMeta:
                             q = _quote_if_needed_for_formula(v)
                             parts.append(f"({colname} == {q})")
                         cond = f"({' OR '.join(parts)})" if parts else "(False)"
+                    elif op == 6:  # OPERATOR_UNDEFINED
+                        cond = f"({colname} == '')"
                     elif op == 7:  # OPERATOR_ELSE
                         cond = "(1==1)"
                     else:
-                        # Unknown/unsupported operator (LEGAL/ILLEGAL/UNDEFINED)
+                        # Unknown/unsupported operator (LEGAL/ILLEGAL)
                         logging.warning(f"Unsupported classification operator {op} for attribute {attr.attribute_name}")
-                        cond = "(False)"
+                        cond = "(1==1)" # in InfoZoom the value is "Greater"
 
                     then_val = _quote_if_needed_for_formula(s_class_value)
                     nested = f"IF ({cond} , {then_val} , {nested})"
@@ -832,7 +837,10 @@ class FOXMeta:
                         if not isinstance(case_val, dict):
                             continue
                         condition = case_val.get("condition", "")
-                        condition = condition.replace("=", "==")  # NEMO uses double '==' for equality
+                        if condition == "=":
+                            condition = condition.replace("=", "==")  # NEMO uses double '==' for equality
+                        condition = condition.replace("<>", "!=")  # NEMO uses '!=' instead of '<>'
+
                         class_value = case_val.get("class_value", "")
                         refs = case_val.get("refattrs", []) or []
 
@@ -843,26 +851,10 @@ class FOXMeta:
                             except Exception:
                                 ref_id = None
 
-                            referenced_attribute = None
-                            if ref_id is not None:
-                                referenced_attribute = next(
-                                    (
-                                        a
-                                        for a in self.attributes
-                                        if a.attribute_id == ref_id
-                                    ),
-                                    None,
-                                )
+                            referenced_attribute = self._get_referenced_attribute(ref_id)
                             # fallback: try to match by attribute name
                             if not referenced_attribute:
-                                referenced_attribute = next(
-                                    (
-                                        a
-                                        for a in self.attributes
-                                        if a.attribute_name == ref
-                                    ),
-                                    None,
-                                )
+                                referenced_attribute = self._get_referenced_attribute(ref)
 
                             if referenced_attribute:
                                 placeholder = f"[X{str(i)}]"
@@ -934,7 +926,7 @@ class FOXMeta:
             if attr.attribute_type == FOXAttributeType.Link:
 
                 # search for the referenced attribute
-                referenced_attr = self._get_referenced_attribute(attr)
+                referenced_attr = self._get_referenced_attribute(attr.original_attribute_index)
 
                 if referenced_attr.nemo_not_supported:
                     logging.warning(
@@ -986,7 +978,7 @@ class FOXMeta:
         return "Standard"  # default type
 
 
-    def _get_referenced_attribute(self, attr: FoxAttribute) -> FoxAttribute:
+    def _get_referenced_attribute(self, original_attribute_index: int) -> FoxAttribute:
         """return the referenced attribute for a link attribute. Resolve nested links if necessary.
 
         Args:
@@ -998,24 +990,21 @@ class FOXMeta:
         Returns:
             FoxAttribute: _description_
         """
-        referenced_attr = next(
+        referenced_attribute = next(
             (
                 a
                 for a in self.attributes
-                if a.attribute_id == attr.original_attribute_index
+                if a.attribute_id == original_attribute_index
             ),
             None,
         )
-        if not referenced_attr:
+        if not referenced_attribute:
             raise ValueError(
-                f"Referenced attribute with ID {attr.original_attribute_index} not found for link attribute {attr.attribute_name}."
+                f"Referenced attribute with ID {original_attribute_index} not found for link attribute."
             )
 
-        if referenced_attr.attribute_type == FOXAttributeType.Link:
-            logging.info(
-                f"Link attribute {attr.attribute_name} references another link attribute {referenced_attr.attribute_name}. Resolving nested link."
-            )
-            referenced_attr = self._get_referenced_attribute(referenced_attr)
+        if referenced_attribute.attribute_type == FOXAttributeType.Link and referenced_attribute.original_attribute_index is not None:
+            referenced_attribute = self._get_referenced_attribute(referenced_attribute.original_attribute_index)
 
-        return referenced_attr
+        return referenced_attribute
 
