@@ -101,52 +101,72 @@ class FOXFile:
             for attr in attributes:
                 if attr.attribute_type == FOXAttributeType.Normal:
                 # if attr.attribute_type in [FOXAttributeType.Normal, FOXAttributeType.Expression]:
-                    match attr.nemo_data_type:
+                    try:
+                        attribute_nemo_name = attr.get_nemo_name()
 
-                        case "date":
-                            df[attr.get_nemo_name()] = pd.to_datetime(
-                                df[attr.get_nemo_name()],
-                                errors="coerce",
-                                format=attr.nemo_pandas_conversion_format,
-                            ).dt.date
+                        # if attribute_nemo_name in ["time_of_import_2_83c88311_609c_4efc_aa96_b20952b24268", "catalog_number_193_2475758d_8247_4f1e_9896_9942ecc0caf7"]:
+                        #     delasap = 42
+                        #     for val in attr.values:
+                        #         if val is not None and val != "":
+                        #             xxx = val
 
-                        case "datetime":
-                            df[attr.get_nemo_name()] = pd.to_datetime(
-                                df[attr.get_nemo_name()],
-                                errors="coerce",
-                                format=attr.nemo_pandas_conversion_format,
-                            )
+                        match attr.nemo_data_type:
+                            case "date":
+                                df[attribute_nemo_name] = pd.to_datetime(
+                                    df[attribute_nemo_name],
+                                    errors="coerce",
+                                    format=attr.nemo_pandas_conversion_format,
+                                ).dt.date
 
-                        case "integer" | "float":
-
-                            # remove thousands separator and replace decimal point with a "."
-                            if attr.nemo_numeric_separator:
-                                df[attr.get_nemo_name()] = (
-                                    df[attr.get_nemo_name()]
-                                    .astype(str)
-                                    .str.replace(
-                                        attr.nemo_numeric_separator, "", regex=False
-                                    )
+                            case "datetime":
+                                df[attribute_nemo_name] = pd.to_datetime(
+                                    df[attribute_nemo_name],
+                                    errors="coerce",
+                                    format=attr.nemo_pandas_conversion_format,
                                 )
-                            if (
-                                attr.nemo_decimal_point
-                                and attr.nemo_decimal_point != "."
-                            ):
-                                df[attr.get_nemo_name()] = (
-                                    df[attr.get_nemo_name()]
-                                    .astype(str)
-                                    .str.replace(
-                                        attr.nemo_decimal_point, ".", regex=False
-                                    )
-                                )
-                            df[attr.get_nemo_name()] = pd.to_numeric(
-                                df[attr.get_nemo_name()], errors="coerce"
-                            ).astype(
-                                "Int64"
-                                if attr.nemo_data_type == "integer"
-                                else "float64"
-                            )
 
+                            case "integer" | "float":
+
+                                # remove thousands separator and replace decimal point with a "."
+                                if attr.nemo_numeric_separator:
+                                    df[attribute_nemo_name] = (
+                                        df[attribute_nemo_name  ]
+                                        .astype(str)
+                                        .str.replace(
+                                            attr.nemo_numeric_separator, "", regex=False
+                                        )
+                                    )
+                                if (
+                                    attr.nemo_decimal_point
+                                    and attr.nemo_decimal_point != "."
+                                ):
+                                    df[attribute_nemo_name] = (
+                                        df[attribute_nemo_name ]
+                                        .astype(str)
+                                        .str.replace(
+                                            attr.nemo_decimal_point, ".", regex=False
+                                        )
+                                    )
+                                df[attribute_nemo_name] = pd.to_numeric(
+                                    df[attribute_nemo_name], errors="coerce"
+                                ).astype(
+                                    "Int64"
+                                    if attr.nemo_data_type == "integer"
+                                    else "float64"
+                                )
+
+                    except Exception as e:
+                        logging.warning(
+                            f"Could not convert attribute '{attr.get_nemo_name()}' to type '{attr.nemo_data_type}'  format={attr.format}  nemo_pandas_conversion_format={attr.nemo_pandas_conversion_format}: {e}"
+                        )
+                        attr.nemo_data_type = "string"
+                        # print("C rows =", len(df))
+                        # print("C cols  =", df.shape[1])
+                        # print("C shape =", df.shape)
+                        # print("C columns =", df.columns.tolist())
+                        # print(df.head())
+                        pass
+                
         else:
             df = pd.DataFrame()
 
@@ -250,6 +270,11 @@ class FOXFile:
         """
         data_type = "string"
         pandas_string = None
+
+
+
+        if attr.get_nemo_name() == "time_of_import_2_83c88311_609c_4efc_aa96_b20952b24268":
+            delasap = 42
 
         # IZ supports
         # variants of d/m/y (t,m,j)
@@ -613,7 +638,6 @@ class FOXFile:
 
         for _ in range(global_information.num_attributes):
             attribute_name = reader.read_CString()
-            logging.info(f"Reading attribute: {_} {attribute_name}")
 
             display_children = False
             if len(attribute_name) > 1 and attribute_name[0] == "+":
@@ -632,6 +656,8 @@ class FOXFile:
 
             if global_information.version_short >= "FOX2011/05/26":
                 attr.uuid = reader.read_CString()
+
+            logging.info(f"Reading attribute: {attribute_id} {attr.uuid} {attribute_name}")
 
             if global_information.version_short >= "FOX2012/08/08":
                 attr.number_of_tags = reader.read_int()
@@ -692,6 +718,10 @@ class FOXFile:
             attr.dynamic_color_ranges = reader.read_bool()
             attr.color_threshold = reader.read_double()
             attr.ampel_color_coding = reader.read_bool()
+            if attr.ampel_color_coding:
+                if self.foxReaderInfo:
+                    self.foxReaderInfo.add_issue(IssueType.AMPELCOLORCODING, attr.attribute_name, "", "")
+
             attr.bold_values = reader.read_bool()
             attr.suppress_compression = reader.read_bool()
             attr.constant_low_high_mark = reader.read_bool()
@@ -873,21 +903,29 @@ class FOXFile:
                 )
 
                 attr.values = [value_store[i] for i in index_array]
-                for val in attr.values:
-                    if len(val) > 500:
-                        logging.warning(f"Value too long in attribute '{attr.attribute_name}': '{val[:100]}...{val[-100:]}'")
+                # for val in attr.values:
+                #     if len(val) > 500:
+                #         logging.warning(f"Value too long in attribute '{attr.attribute_name}': '{val[:100]}...{val[-100:]}'")
 
                 attr.value_frequency_coloring = reader.read_bool()
                 if attr.value_frequency_coloring:
-                    # attr.nemo_not_supported = True
                     if self.foxReaderInfo:
                         self.foxReaderInfo.add_issue(IssueType.VALUEFREQUENCYCOLORING, attr.attribute_name, "", attr.format)
                     else:
                         raise NotImplementedError("Value frequency coloring not implemented")
+                    nr_of_frequency_values = reader.read_int()
+                    for _ in range(nr_of_frequency_values):
+                        freq_value = reader.read_compressed_value(
+                            attr.attribute_name, [], "", 1
+                        )
 
                 attr.explicit_colors = reader.read_bool()
                 if attr.explicit_colors:
-                    # attr.nemo_not_supported = True
+                    num_colors = reader.read_int()
+                    for _ in range(num_colors):
+                        value = reader.read_CString()
+                        color = reader.read_bytes(4)  # ignore color
+
                     if self.foxReaderInfo:
                         self.foxReaderInfo.add_issue(IssueType.EXPLICITCOLORING, attr.attribute_name, "", attr.format)
                     else:
@@ -909,6 +947,11 @@ class FOXFile:
             if attr.attribute_type == FOXAttributeType.Classification:
                 self._guess_data_conversion(attr)
                 logging.info(f"Classification attribute '{attr.attribute_name}'  '{attr.format}'   '{attr.nemo_data_type}'")
+
+            if attr.attribute_type == FOXAttributeType.Summary:
+                # self._guess_data_conversion(attr) this call results in 0 records :-(
+                attr.nemo_data_type = "string"
+                logging.info(f"Summary attribute '{attr.attribute_name}'  '{attr.format}'   '{attr.nemo_data_type}'")
 
             attributes.append(attr)
 

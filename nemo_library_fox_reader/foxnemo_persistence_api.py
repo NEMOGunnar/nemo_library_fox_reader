@@ -22,6 +22,7 @@ from nemo_library.model.tile import Tile
 from nemo_library.model.variance import Variance
 from nemo_library.utils.config import Config
 from nemo_library.utils.utils import FilterType, FilterValue, log_error
+from nemo_library_fox_reader.models.couple_attributes_request import CoupleAttributesRequest
 
 T = TypeVar("T")
 
@@ -778,3 +779,72 @@ def getDependencyTree(config: Config, id: str) -> DependencyTree:
 
     data = json.loads(response.text)
     return DependencyTree.from_dict(data)
+
+
+def _couple_columns(
+    config: Config,
+    projectname: str,
+    requestItems: list[CoupleAttributesRequest],
+) -> None:
+    """
+    Generic function to couple attributes.
+
+    :param config: Configuration containing connection details
+    :param projectname: Name of the project
+    :param requestItems: List of requests to couple attributes
+    """
+
+    # Get existing columns. Their ids are not the same as the attribute ids in FOX file.
+    cols = getColumns(config, projectname)
+
+    for request in requestItems:
+
+        # Initialize request
+        headers = config.connection_get_headers()
+        project_id = getProjectID(config, projectname)
+        params = {"translationHandling": "UseAuxiliaryTranslationFields"}
+
+        request.tenant = config.get_tenant()
+        request.projectId = project_id
+
+        # Map attribute internal names to their IDs
+        attr_ids = []
+        for attr_nemo_name in request.attributeIds:
+            attr_id = cols[next(i for i, c in enumerate(cols) if c.internalName == attr_nemo_name)].id
+            attr_ids.append(attr_id)
+        request.attributeIds = attr_ids
+
+        attr_id = cols[next(i for i, c in enumerate(cols) if c.internalName == request.previousElementId)].id
+        request.previousElementId = attr_id
+
+        request_as_json = request.to_dict()
+        url = f"{config.get_config_nemo_url()}/api/nemo-persistence/metadata/AttributeTree/projects/{project_id}/attributes/couple"
+        # url = f"{config.get_config_nemo_url()}/api/nemo-persistence/metadata/Columns/projects/{project_id}/attributes/couple"
+        # url = f"{config.get_config_nemo_url()}/api/nemo-focus/infoscape/projects/{project_id}/attributes/couple"
+
+
+        response = requests.post(
+            url,
+            json=request_as_json,
+            headers=headers,
+            params=params,
+        )
+
+        status_code = response.status_code
+        if response.status_code > 201:
+            log_error(
+                f"POST Request failed.\nURL: {url}\nObject: {request_as_json}\nStatus: {response.status_code}, error: {response.text}"
+            )
+
+
+def coupleAttributes(
+    config: Config,
+    projectname: str,
+    request: list[CoupleAttributesRequest],
+) -> None:
+    
+    _couple_columns(
+        config=config,
+        projectname=projectname,
+        requestItems=request,
+    )

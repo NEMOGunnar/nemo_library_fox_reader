@@ -1,5 +1,7 @@
 import logging
 from nemo_library_fox_reader.foxstatisticsinfo import FOXStatisticsInfo, IssueType
+from nemo_library_fox_reader.models.couple_attributes_request import CoupleAttributesRequest
+
 
 class FOXReaderInfo:
     """
@@ -46,3 +48,4 @@ class FOXReaderInfo:
     attributes_with_sort_order_used: list[str] = []
     attributes_with_html_links_used: list[str] = []
     
+    couple_attributes_requests: list[CoupleAttributesRequest] = []

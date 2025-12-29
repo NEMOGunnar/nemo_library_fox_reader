@@ -16,12 +16,13 @@ import pandas as pd
 from nemo_library_fox_reader.foxfile import FOXFile
 from nemo_library_fox_reader.foxmeta import FOXMeta
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
-from nemo_library.features.nemo_persistence_api import (
+from nemo_library_fox_reader.foxnemo_persistence_api import (
     createColumns,
     getColumns,
     getProjectID,
 )
-from nemo_library.features.nemo_persistence_api import createProjects
+from nemo_library_fox_reader.foxnemo_persistence_api import createProjects
+from nemo_library_fox_reader.foxnemo_persistence_api import coupleAttributes    
 from nemo_library.model.column import Column
 from nemo_library.model.project import Project
 from nemo_library.utils.config import Config
@@ -341,6 +342,12 @@ def ReUploadFile(
             raise Exception(
                 f"Request failed. Status: {response.status_code}, error: {response.text}"
             )
+        
+        # if foxReaderInfo is not None:
+        #     for info in foxReaderInfo.statistics_infos:
+        #         if info.issue == "FUNCTIONCALL":
+        #             logging.info(f"FUNCTIONCALL '{info.extra_info}' in attribute {info.attribute}  ")
+                    
         logging.info("Ingestion successful")
 
         # Wait for task to be completed if not trigger_only
@@ -409,6 +416,7 @@ def ReUploadFile(
                 time.sleep(1 if version == 2 else 5)
 
         update_defined_columns(config, projectname)
+        couple_attributes(config, projectname, foxReaderInfo)
 
         # Trigger Analyze Table Task for version 2 if required
         if version == 2 and update_project_settings:
@@ -477,7 +485,7 @@ def update_defined_columns(config: Config, projectname: str) -> None:
         columns_to_update = []
         for col in cols:
             if col.columnType == "DefinedColumn":
-                logging.info(f"Updating defined column '{col.internalName}'   conflictState={col.conflictState}")
+                # logging.info(f"Updating defined column '{col.internalName}'   conflictState={col.conflictState}")
                 col.conflictState = "NoConflict"
                 columns_to_update.append(col)
 
@@ -507,6 +515,36 @@ def update_defined_columns(config: Config, projectname: str) -> None:
         logging.warning(f"Failed to update defined columns: {e}")
         pass
 
+
+def couple_attributes(config: Config, projectname: str, foxReaderInfo: FOXReaderInfo | None = None) -> None:
+    try:
+        
+        if foxReaderInfo is not None:
+
+            # Execute coupling if there are requests
+            if foxReaderInfo.couple_attributes_requests:
+                logging.info(f"Coupling {len(foxReaderInfo.couple_attributes_requests)} attributes in project '{projectname}'...")
+                coupleAttributes(
+                    config=config,
+                    projectname=projectname,
+                    request=foxReaderInfo.couple_attributes_requests
+                )
+
+        # cols = getColumns(config, projectname)
+        # columns_to_update = []
+        # for col in cols:
+        #     if col.columnType == "CoupledAttribute":
+        #         # logging.info(f"Coupling attribute '{col.internalName}'   conflictState={col.conflictState}")
+        #         col.conflictState = "NoConflict"
+        #         columns_to_update.append(col)
+
+        # createColumns(config, projectname, columns_to_update)
+
+        logging.info(f"Coupling attributes successful")
+
+    except Exception as e:
+        logging.warning(f"Failed to couple attributes: {e}")
+        pass
 
 def _get_file_size(filepath: str):
     # filesize in byte
