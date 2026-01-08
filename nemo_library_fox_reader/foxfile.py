@@ -6,6 +6,7 @@ import logging
 import re
 from typing import TypeVar
 import pandas as pd
+from dateutil import parser as dateutil_parser
 
 from nemo_library_fox_reader.foxattribute import FoxAttribute
 from nemo_library_fox_reader.foxbinaryreader import FoxBinaryReader
@@ -84,16 +85,18 @@ class FOXFile:
 #                if attr.attribute_type in [FOXAttributeType.Normal, FOXAttributeType.Expression]:
                 # if attr.attribute_type not in [FOXAttributeType.Header, FOXAttributeType.Link]:
                 if attr.attribute_type not in [FOXAttributeType.Header, FOXAttributeType.Link, FOXAttributeType.Expression]:
+                # if attr.attribute_type in [FOXAttributeType.Normal]:
                     columns.append(attr.get_nemo_name())
                     values.append(attr.values)
 
             # Transpose rows/columns: zip(*values) converts list-of-columns to list-of-rows
             df = pd.DataFrame(data=list(zip(*values)), columns=columns)
 
+            # df_columns = df.columns.tolist()
             # print("C rows =", len(df))
             # print("C cols  =", df.shape[1])
             # print("C shape =", df.shape)
-            # print("C columns =", df.columns.tolist())
+            # print("C columns =", df_columns)
             # print(df.head())
 
 
@@ -104,26 +107,33 @@ class FOXFile:
                     try:
                         attribute_nemo_name = attr.get_nemo_name()
 
-                        # if attribute_nemo_name in ["time_of_import_2_83c88311_609c_4efc_aa96_b20952b24268", "catalog_number_193_2475758d_8247_4f1e_9896_9942ecc0caf7"]:
-                        #     delasap = 42
-                        #     for val in attr.values:
-                        #         if val is not None and val != "":
-                        #             xxx = val
-
                         match attr.nemo_data_type:
                             case "date":
-                                df[attribute_nemo_name] = pd.to_datetime(
+                                # Parse dates. Keep as full timestamps (datetime64) so exports
+                                # preserve the time component (previously we converted to python
+                                # date objects via .dt.date which caused CSV exports to drop time).
+                                df[attribute_nemo_name] = self._parse_datetime_series_fuzzy(
                                     df[attribute_nemo_name],
-                                    errors="coerce",
-                                    format=attr.nemo_pandas_conversion_format,
-                                ).dt.date
+                                    fmt=attr.nemo_pandas_conversion_format,
+                                    date_only=False,
+                                )
+                                # If you truly want pure date objects later, call .dt.date when exporting
+                                delasap1 = df[attribute_nemo_name].to_list()
 
                             case "datetime":
-                                df[attribute_nemo_name] = pd.to_datetime(
+                                # fix some known odd values (keep user code behaviour)
+                                for val in attr.values:
+                                    if val is not None and val != "":
+                                        # val = val.replace(", 00:00:00", "")
+                                        xxx = val
+
+                                df[attribute_nemo_name] = self._parse_datetime_series_fuzzy(
                                     df[attribute_nemo_name],
-                                    errors="coerce",
-                                    format=attr.nemo_pandas_conversion_format,
+                                    fmt=attr.nemo_pandas_conversion_format,
+                                    date_only=False,
                                 )
+                                delasap1 = df[attribute_nemo_name].to_list()
+                                delasap2 = delasap1
 
                             case "integer" | "float":
 
@@ -155,6 +165,12 @@ class FOXFile:
                                     else "float64"
                                 )
 
+                        # if attribute_nemo_name in ["bestelldatum_4_2f1fd773_6caf_455c_b31c_2ef2245f3fc1"]:
+                        #     # for val in attr.values:
+                        #     #     if val is not None and val != "":
+                        #     #         xxx = val
+                        #     attr.nemo_data_type = "date"
+
                     except Exception as e:
                         logging.warning(
                             f"Could not convert attribute '{attr.get_nemo_name()}' to type '{attr.nemo_data_type}'  format={attr.format}  nemo_pandas_conversion_format={attr.nemo_pandas_conversion_format}: {e}"
@@ -166,7 +182,8 @@ class FOXFile:
                         # print("C columns =", df.columns.tolist())
                         # print(df.head())
                         pass
-                
+
+
         else:
             df = pd.DataFrame()
 
@@ -189,16 +206,16 @@ class FOXFile:
         decimal_sep = None
         unique_thousands = [" ", "’", "'"]
 
-        if attr.attribute_name == "Alter":
-            delasap = 42
-            
         if attr.format == "####":
             return ("integer", None, None)
+
+        if attr.format == "####,####":
+            return ("float", None, ",")
 
         # remove + and - first, we don't need it
         pattern_clean = attr.format.replace("+", "").replace("-", "")
 
-        # easiest case: thousands? we jusst have to find out the decimal point then
+        # easiest case: thousands? we just have to find out the decimal point then
         if any(token in pattern_clean for token in unique_thousands):
             thousands_sep = next(
                 (token in pattern_clean for token in unique_thousands), None
@@ -272,10 +289,6 @@ class FOXFile:
         pandas_string = None
 
 
-
-        if attr.get_nemo_name() == "time_of_import_2_83c88311_609c_4efc_aa96_b20952b24268":
-            delasap = 42
-
         # IZ supports
         # variants of d/m/y (t,m,j)
         # variants of hh:mm:ss
@@ -343,6 +356,49 @@ class FOXFile:
             pandas_string = None
 
         return (data_type, pandas_string)
+
+    def _parse_datetime_series_fuzzy(self, series: pd.Series, fmt: str | None = None, date_only: bool = False) -> pd.Series:
+        """Parse a Series to datetimes using a fast vectorized pass with `pd.to_datetime(format=...)` and
+        fallback to dateutil.parser.parse(..., fuzzy=True) for entries that remain NaT.
+
+        Generated by CoPilot
+
+        Args:
+            series: pd.Series with the raw string values
+            fmt: optional pandas strftime format string to try first
+            date_only: if True return python dates (.dt.date), else Timestamp
+        Returns:
+            pd.Series with parsed datetimes (or python date objects if date_only=True)
+        """
+        # First try fast vectorized parsing with provided format (if any)
+        try:
+            if fmt:
+                parsed = pd.to_datetime(series, errors="coerce", format=fmt)
+            else:
+                parsed = pd.to_datetime(series, errors="coerce")
+        except Exception:
+            # if format is invalid or parsing with format failed, try without format
+            parsed = pd.to_datetime(series, errors="coerce")
+
+        mask = parsed.isna()
+        if mask.any():
+            # parse remaining values with dateutil (fuzzy)
+            idxs = parsed.index[mask]
+            parsed_values = []
+            for v in series.loc[idxs].astype(str):
+                if v is None or v == "" or v.lower() == "nan":
+                    parsed_values.append(pd.NaT)
+                    continue
+                try:
+                    dt = dateutil_parser.parse(v, fuzzy=True)
+                    parsed_values.append(pd.Timestamp(dt))
+                except Exception:
+                    parsed_values.append(pd.NaT)
+            parsed.loc[idxs] = parsed_values
+
+        if date_only:
+            return parsed.dt.date
+        return parsed
 
     def _read_global_part_1(self) -> FoxGlobal:
         """
@@ -657,7 +713,7 @@ class FOXFile:
             if global_information.version_short >= "FOX2011/05/26":
                 attr.uuid = reader.read_CString()
 
-            logging.info(f"Reading attribute: {attribute_id} {attr.uuid} {attribute_name}")
+            # logging.info(f"Reading attribute: {attribute_id} {attr.uuid} {attribute_name}")
 
             if global_information.version_short >= "FOX2012/08/08":
                 attr.number_of_tags = reader.read_int()
@@ -691,7 +747,7 @@ class FOXFile:
             attr.is_header = reader.read_bool()
             if attr.is_header:
                 attr.display_children = display_children
-                logging.info(f"Attribute '{attr.attribute_name}' is a header attribute. Display children: {attr.display_children} ")
+                # logging.info(f"Attribute '{attr.attribute_name}' is a header attribute. Display children: {attr.display_children} ")
 
             attr.is_link = reader.read_bool()
 
@@ -789,7 +845,7 @@ class FOXFile:
                         unmodified = reader.read_bool() #.read_int()
                     num_values = reader.read_int()
                     
-                    logging.info(f"Classification attribute detected '{attr.attribute_name}': range {i}, op={op}, threshold={threshold}, s_threshold={s_threshold}, s_class_value={s_class_value}, num_values={num_values}")
+                    # logging.info(f"Classification attribute detected '{attr.attribute_name}': range {i}, op={op}, threshold={threshold}, s_threshold={s_threshold}, s_class_value={s_class_value}, num_values={num_values}")
 
                     # read the optional discrete values for IN operator and also store
                     values_list = []
@@ -866,7 +922,7 @@ class FOXFile:
 
             attr.coupled = reader.read_bool()
             if attr.coupled:
-                logging.info(f"Attribute '{attr.attribute_name}' '{attr.uuid}' is coupled.")
+                # logging.info(f"Attribute '{attr.attribute_name}' '{attr.uuid}' is coupled.")
                 attr.coupling_extras = [reader.read_int() for _ in range(4)]
 
             # Read values if applicable
@@ -935,23 +991,24 @@ class FOXFile:
             if attr.attribute_type == FOXAttributeType.Normal:
             # if attr.attribute_type != FOXAttributeType.Header:
                 self._guess_data_conversion(attr)
+                logging.info(f"Regular attribute '{attr.format}'   '{attr.nemo_data_type}'  '{attr.get_nemo_name()}'")
 
             if attr.attribute_type == FOXAttributeType.Expression:
                 self._guess_data_conversion(attr)
-                logging.info(f"Expression attribute '{attr.attribute_name}'  '{attr.format}'   '{attr.nemo_data_type}'")
+                logging.info(f"Expression attribute '{attr.format}'   '{attr.nemo_data_type}'  '{attr.get_nemo_name()}'")
 
             if attr.attribute_type == FOXAttributeType.CaseDiscrimination:
                 self._guess_data_conversion(attr)
-                logging.info(f"CaseDiscrimination attribute '{attr.attribute_name}'  '{attr.format}'   '{attr.nemo_data_type}'")
+                logging.info(f"CaseDiscrimination attribute '{attr.format}'  '{attr.nemo_data_type}'  '{attr.get_nemo_name()}'")
 
             if attr.attribute_type == FOXAttributeType.Classification:
                 self._guess_data_conversion(attr)
-                logging.info(f"Classification attribute '{attr.attribute_name}'  '{attr.format}'   '{attr.nemo_data_type}'")
+                logging.info(f"Classification attribute '{attr.format}'   '{attr.nemo_data_type}'  '{attr.get_nemo_name()}'")
 
             if attr.attribute_type == FOXAttributeType.Summary:
                 # self._guess_data_conversion(attr) this call results in 0 records :-(
                 attr.nemo_data_type = "string"
-                logging.info(f"Summary attribute '{attr.attribute_name}'  '{attr.format}'   '{attr.nemo_data_type}'")
+                # logging.info(f"Summary attribute '{attr.attribute_name}'  '{attr.format}'   '{attr.nemo_data_type}'")
 
             attributes.append(attr)
 
@@ -960,6 +1017,7 @@ class FOXFile:
             attr.attribute_id = idx
 
         return attributes
+
 
     def _read_global_part_2(self, global_information: FoxGlobal) -> FoxGlobal:
         """

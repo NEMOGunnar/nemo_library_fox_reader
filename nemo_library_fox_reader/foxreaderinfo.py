@@ -49,3 +49,6 @@ class FOXReaderInfo:
     attributes_with_html_links_used: list[str] = []
     
     couple_attributes_requests: list[CoupleAttributesRequest] = []
+    dictionary_internal_names_to_attribute_ids: dict[str, str] = {} 
+    dictionary_internal_names_to_data_types: dict[str, str] = {}
+    

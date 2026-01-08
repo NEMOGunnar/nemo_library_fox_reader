@@ -106,12 +106,19 @@ def _generic_metadata_create_or_update(
 
         else:
             # Create new object
+            url = f"{config.get_config_nemo_url()}/api/nemo-persistence/metadata/{endpoint}"
+            obj_as_json = obj.to_dict()
             response = requests.post(
-                f"{config.get_config_nemo_url()}/api/nemo-persistence/metadata/{endpoint}",
-                json=obj.to_dict(),
+                url,
+                json=obj_as_json,
                 headers=headers,
                 params=params,
             )
+            try:
+                internal_name = obj.internalName
+                logging.info(f"Persistence API POST Endpoint: {endpoint}  {internal_name}  Status: {response.status_code}")
+            except Exception as e:
+                pass
             # if response.status_code != 201:
             #     log_error(
             #         f"POST Request failed.\nURL: {f"{config.get_config_nemo_url()}/api/nemo-persistence/metadata/{endpoint}"}\nobject: {json.dumps(obj.to_dict())}\nStatus: {response.status_code}, error: {response.text}"
@@ -785,6 +792,7 @@ def _couple_columns(
     config: Config,
     projectname: str,
     requestItems: list[CoupleAttributesRequest],
+    dictionary_internal_names_to_attribute_ids: dict[str, str] = None
 ) -> None:
     """
     Generic function to couple attributes.
@@ -795,9 +803,12 @@ def _couple_columns(
     """
 
     # Get existing columns. Their ids are not the same as the attribute ids in FOX file.
-    cols = getColumns(config, projectname)
+    # cols = getColumns(config, projectname)
+    
 
     for request in requestItems:
+
+        logging.info(f"Coupling: {request.attributeIds} after '{request.previousElementId}' in group '{request.containingGroupInternalName}'")
 
         # Initialize request
         headers = config.connection_get_headers()
@@ -808,43 +819,61 @@ def _couple_columns(
         request.projectId = project_id
 
         # Map attribute internal names to their IDs
+
         attr_ids = []
         for attr_nemo_name in request.attributeIds:
-            attr_id = cols[next(i for i, c in enumerate(cols) if c.internalName == attr_nemo_name)].id
-            attr_ids.append(attr_id)
+            try:
+                attr_id = dictionary_internal_names_to_attribute_ids[attr_nemo_name]
+                attr_ids.append(attr_id)
+            except Exception:
+                logging.warning(f"Coupling: Attribute name '{attr_nemo_name}' not found in columns.")
+                continue
         request.attributeIds = attr_ids
 
-        attr_id = cols[next(i for i, c in enumerate(cols) if c.internalName == request.previousElementId)].id
-        request.previousElementId = attr_id
+        if request.previousElementId:
+            try:
+                attr_id = dictionary_internal_names_to_attribute_ids[request.previousElementId]
+                request.previousElementId = attr_id
+            except Exception:
+                logging.warning(f"Coupling: Attribute name previous '{request.previousElementId}' not found in columns.")
+                continue
 
         request_as_json = request.to_dict()
         url = f"{config.get_config_nemo_url()}/api/nemo-persistence/metadata/AttributeTree/projects/{project_id}/attributes/couple"
         # url = f"{config.get_config_nemo_url()}/api/nemo-persistence/metadata/Columns/projects/{project_id}/attributes/couple"
         # url = f"{config.get_config_nemo_url()}/api/nemo-focus/infoscape/projects/{project_id}/attributes/couple"
 
-
-        response = requests.post(
-            url,
-            json=request_as_json,
-            headers=headers,
-            params=params,
-        )
-
-        status_code = response.status_code
-        if response.status_code > 201:
-            log_error(
-                f"POST Request failed.\nURL: {url}\nObject: {request_as_json}\nStatus: {response.status_code}, error: {response.text}"
+        try:
+            response = requests.post(
+                url,
+                json=request_as_json,
+                headers=headers,
+                params=params,
             )
 
+            status_code = response.status_code
+            if response.status_code > 201:
+                log_error(
+                    f"POST Request failed.\nURL: {url}\nObject: {request_as_json}\nStatus: {response.status_code}, error: {response.text}"
+                )
+            else:
+                logging.info(f"Coupling attributes successful '{response.text}' Status: {status_code}")
+        except Exception as e:
+            logging.warning(
+                f"POST Request failed.\nURL: {url}\nObject: {request_as_json}\nException: {str(e)}"
+            )   
+            pass
 
 def coupleAttributes(
     config: Config,
     projectname: str,
     request: list[CoupleAttributesRequest],
+    dictionary_internal_names_to_attribute_ids: dict[str, str] = None
 ) -> None:
     
     _couple_columns(
         config=config,
         projectname=projectname,
         requestItems=request,
+        dictionary_internal_names_to_attribute_ids=dictionary_internal_names_to_attribute_ids
     )

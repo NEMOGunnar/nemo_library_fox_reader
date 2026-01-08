@@ -12,6 +12,8 @@ import requests
 import boto3
 from botocore.exceptions import NoCredentialsError
 import pandas as pd
+import datetime
+from pandas.api.types import is_datetime64_any_dtype
 
 from nemo_library_fox_reader.foxfile import FOXFile
 from nemo_library_fox_reader.foxmeta import FOXMeta
@@ -75,6 +77,52 @@ def ReUploadDataFrame(
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_file_path = os.path.join(temp_dir, "tempfile.csv")
+
+        # try:
+        #     delasap2 = df["bestelldatum_4_2f1fd773_6caf_455c_b31c_2ef2245f3fc1"]
+        #     for v in delasap2:
+        #         delasap3 = v
+        # except Exception:
+        #     pass
+
+        # Prefer explicit data types from foxReaderInfo when available (dictionary_internal_names_to_data_types)
+        types_dict = {}
+        if foxReaderInfo is not None:
+            types_dict = getattr(foxReaderInfo, "dictionary_internal_names_to_data_types", {}) or {}
+
+        # Format datetime/date columns per-column so dates without time are written as YYYY-MM-DD
+        # and datetimes keep the time part as YYYY-MM-DD HH:MM:SS.
+        for col in df.columns:
+            try:
+                series = df[col]
+
+                # If the reader provided an explicit type for this internal column use it
+                dtype_hint = types_dict.get(col)
+                if dtype_hint in ("date", "datetime"):
+                    series_dt = pd.to_datetime(series, errors="coerce")
+                    fmt = "%Y-%m-%d" if dtype_hint == "date" else "%Y-%m-%d %H:%M:%S"
+                    df[col] = series_dt.dt.strftime(fmt).where(series_dt.notna(), "")
+                    continue
+
+                # Fallback heuristic: only attempt to format if dtype is datetime64 or column contains date/datetime Python objects
+                if is_datetime64_any_dtype(series):
+                    series_dt = series
+                else:
+                    sample = series.dropna().head(50)
+                    if len(sample) == 0:
+                        continue
+                    if all(isinstance(v, (datetime.date, datetime.datetime)) for v in sample):
+                        series_dt = pd.to_datetime(series, errors="coerce")
+                    else:
+                        continue
+
+                # If any non-midnight time exists, keep time part; otherwise use date only
+                has_time = ((series_dt.dt.hour.fillna(0) != 0) | (series_dt.dt.minute.fillna(0) != 0) | (series_dt.dt.second.fillna(0) != 0) | (series_dt.dt.microsecond.fillna(0) != 0)).any()
+                fmt = "%Y-%m-%d %H:%M:%S" if has_time else "%Y-%m-%d"
+                df[col] = series_dt.dt.strftime(fmt).where(series_dt.notna(), "")
+            except Exception:
+                # Ignore columns that cannot be treated as dates/datetimes
+                continue
 
         df.to_csv(
             temp_file_path,
@@ -523,27 +571,16 @@ def couple_attributes(config: Config, projectname: str, foxReaderInfo: FOXReader
 
             # Execute coupling if there are requests
             if foxReaderInfo.couple_attributes_requests:
-                logging.info(f"Coupling {len(foxReaderInfo.couple_attributes_requests)} attributes in project '{projectname}'...")
                 coupleAttributes(
                     config=config,
                     projectname=projectname,
-                    request=foxReaderInfo.couple_attributes_requests
+                    request=foxReaderInfo.couple_attributes_requests,
+                    dictionary_internal_names_to_attribute_ids=foxReaderInfo.dictionary_internal_names_to_attribute_ids
                 )
-
-        # cols = getColumns(config, projectname)
-        # columns_to_update = []
-        # for col in cols:
-        #     if col.columnType == "CoupledAttribute":
-        #         # logging.info(f"Coupling attribute '{col.internalName}'   conflictState={col.conflictState}")
-        #         col.conflictState = "NoConflict"
-        #         columns_to_update.append(col)
-
-        # createColumns(config, projectname, columns_to_update)
-
-        logging.info(f"Coupling attributes successful")
+                logging.info(f"Coupling attributes successful")
 
     except Exception as e:
-        logging.warning(f"Failed to couple attributes: {e}")
+        logging.warning(f"Failed to couple attributes:: {e}")
         pass
 
 def _get_file_size(filepath: str):
@@ -663,6 +700,7 @@ def synchronizeCsvColsAndImportedColumns(
             )
 
     if new_columns:
+        logging.info(f"synchronizeCsvColsAndImportedColumns:  Creating new columns '{new_columns}'")
         createColumns(
             config=config, projectname=projectname, columns=new_columns
         )

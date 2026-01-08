@@ -398,7 +398,7 @@ class FoxFormulaConverter:
             # For link attributes, resolve to the original attribute they point to
             original_attr_index = referenced_attribute.original_attribute_index
             if original_attr_index is not None and original_attr_index < len(self.all_attributes):
-                logging.info(f"Resolving link attribute '{referenced_attribute.attribute_name}' to original attribute index {original_attr_index} {self.attr.attribute_name}")
+                # logging.info(f"Resolving link attribute '{referenced_attribute.attribute_name}' to original attribute index {original_attr_index} {self.attr.attribute_name}")
                 referenced_attribute = self.all_attributes[original_attr_index]
 
         self.last_referenced_attribute = referenced_attribute

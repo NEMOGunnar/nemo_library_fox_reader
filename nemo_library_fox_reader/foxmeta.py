@@ -89,8 +89,10 @@ class FOXMeta:
         # attributegroups_fox = self._get_fox_columns_HEADER()
         attributelinks_fox = self._get_fox_columns_LINK()
 
-        # for c in columns_fox:
-        #     logging.info(f">>>>>>>>>>>>>> columns_fox: '{c.dataType}  {c.displayName}'  '{c.internalName}'")
+        if self.foxReaderInfo:
+            self.foxReaderInfo.dictionary_internal_names_to_data_types = {}
+            for col in columns_fox:
+                self.foxReaderInfo.dictionary_internal_names_to_data_types[col.internalName] = col.dataType     
 
         # log unsupported attribute types
         # TODO: implement support for these attribute types
@@ -178,7 +180,7 @@ class FOXMeta:
 
                     if differences:
                         for attrname, (new_value, old_value) in differences.items():
-                            logging.info(f"{attrname}: {old_value} --> {new_value}")
+                            logging.info(f"Difference: {attrname}: {old_value} --> {new_value}")
                         updates.append(model_obj)
 
             return updates
@@ -244,6 +246,9 @@ class FOXMeta:
                     config=config, projectname=projectname, **{key: updates[key]}
                 )
 
+        if self.foxReaderInfo:
+            self._fill_dictionary_internal_names_to_attribute_ids(config=config, projectname=projectname)
+
         # finally, adjust order of objects in NEMO project
         logging.info("Adjusting order of objects in NEMO project...")
         try:
@@ -255,6 +260,33 @@ class FOXMeta:
             self._couple_attributes(config=config, projectname=projectname, attributes=self.attributes)
         except Exception as e:
             logging.warning(f"Failed to couple attributes: {e}")
+
+
+    def _fill_dictionary_internal_names_to_attribute_ids(self,config: Config, projectname: str) -> None:
+        """
+        Fills the foxReaderInfo dictionary mapping internal names to attribute IDs.
+        Args:
+            config (Config): NEMO configuration object.
+            projectname (str): Name of the NEMO project.
+        """
+
+        if self.foxReaderInfo is None:
+            return
+
+        self.foxReaderInfo.dictionary_internal_names_to_attribute_ids = {}
+
+        # load current metadata from NEMO project
+        columns = getColumns(config=config,projectname=projectname)
+        links = getAttributeLinks(config=config,projectname=projectname)
+        groups = getAttributeGroups(config=config,projectname=projectname)
+
+        for col in columns:
+            self.foxReaderInfo.dictionary_internal_names_to_attribute_ids[col.internalName] = col.id
+        for link in links:
+            self.foxReaderInfo.dictionary_internal_names_to_attribute_ids[link.internalName] = link.id
+        for group in groups:
+            self.foxReaderInfo.dictionary_internal_names_to_attribute_ids[group.internalName] = group.id
+        delasap4 = self.foxReaderInfo.dictionary_internal_names_to_attribute_ids
 
     def _set_parent_relationships(self) -> None:
         """
@@ -369,6 +401,7 @@ class FOXMeta:
                     )
                     if self.foxReaderInfo:
                         self.foxReaderInfo.couple_attributes_requests.append(couple_request)
+                    attribute_ids = []
                 previous_element_id = attr.get_nemo_name()
             last_attribute_is_coupled = attr.coupled and attr.attribute_type != FOXAttributeType.Header
 
@@ -509,12 +542,37 @@ class FOXMeta:
                     
                 if not function_not_supported:
 
-                    dataType = "float"
-                    if function == "Count" or function == "Count Distinct":
-                        dataType = "integer"
-
-                    logging.info(f"Summary attribute {attr.get_nemo_name()} function {function} data type {dataType}  nemo_data_type={attr.nemo_data_type}  format={attr.format}")
                     dataType = attr.nemo_data_type
+                    format_clean = attr.format.strip().lower()
+
+                    # detect any special characters that might indicate a specific unit for nemo
+                    if any(currency in format_clean for currency in ["€", "$"]):
+                        attr.nemo_unit = "currency"
+                        format_clean = format_clean.replace("€", "").replace("$", "")
+                    elif "%" in format_clean:
+                        attr.nemo_unit = "percent"
+                        format_clean = format_clean.replace("%", "")
+
+                    # detect data type and conversion information from format. It's quite tricky...
+                    if "#" in format_clean:
+                        # "#" in format? we have a number
+                        # (
+                        #     attr.nemo_data_type,
+                        #     attr.nemo_numeric_separator,
+                        #     attr.nemo_decimal_point,
+                        # ) = self._detect_number_format(attr)
+                        if format_clean == "####":
+                           dataType = "integer"
+                        else:
+                           dataType = "float"
+
+                    elif any(token in format_clean for token in ["d", "m", "y", "t", "s", "h"]):
+                        # we have a candidate for a date(time)
+                        dataType, nemo_pandas_conversion_format = (
+                            FOXFile._detect_date_format(None, attr)
+                        )
+
+                    logging.info(f"Summary attribute {attr.get_nemo_name()} function {function} dataType='{dataType}'  format='{attr.format}' nemo_data_type='{attr.nemo_data_type}'")
 
                     aggregation_function = get_aggregation_function(function)
                     column = Column(
@@ -638,7 +696,7 @@ class FOXMeta:
                     nemo_data_type, nemo_pandas_conversion_format = (FOXFile._detect_date_format(None, attr))
                     if nemo_data_type in ["date", "datetime"]:
                         is_link_to_date_with_date_format = True
-                        logging.info(f"Link to date detected {attr.attribute_name} {referenced_attr.attribute_name} {nemo_data_type} {attr.format} {referenced_attr.format} {nemo_pandas_conversion_format}")
+                        # logging.info(f"Link to date detected {attr.attribute_name} {referenced_attr.attribute_name} {nemo_data_type} {attr.format} {referenced_attr.format} {nemo_pandas_conversion_format}")
 
                 if is_link_to_date_with_date_format:
                     # the attribute link references a date/datetime attribute and has a format of a part of datetime. 
