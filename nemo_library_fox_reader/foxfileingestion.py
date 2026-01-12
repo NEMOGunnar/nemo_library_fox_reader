@@ -20,6 +20,7 @@ from nemo_library_fox_reader.foxmeta import FOXMeta
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 from nemo_library_fox_reader.foxnemo_persistence_api import (
     createColumns,
+    deleteColumns,
     getColumns,
     getProjectID,
 )
@@ -463,6 +464,7 @@ def ReUploadFile(
                     break
                 time.sleep(1 if version == 2 else 5)
 
+        delete_duplicate_columns_generated_by_nemo(config, projectname)
         update_defined_columns(config, projectname)
         couple_attributes(config, projectname, foxReaderInfo)
 
@@ -527,13 +529,32 @@ def ReUploadFile(
             os.remove(gzipped_filename)
 
 
+def delete_duplicate_columns_generated_by_nemo(config: Config, projectname: str) -> None: 
+    try:
+        cols = getColumns(config, projectname)
+        columns_to_delete = []
+        for col in cols:
+            if col.columnType == "ExportedColumn":
+                col_duplicate = next((c for c in cols if c.importName == col.importName and c.id != col.id), None)
+                if col_duplicate is not None:
+                    logging.info(f"Duplicate defined column found '{col_duplicate.internalName}'   {col.internalName}  id={col.id}")
+                    columns_to_delete.append(col.id)
+
+        deleteColumns(config, columns_to_delete)
+
+        logging.info(f"Delete duplicate columns successful")
+    except Exception as e:
+        logging.warning(f"Failed to delete duplicate columns: \n{e}")
+        pass
+
+
 def update_defined_columns(config: Config, projectname: str) -> None:
     try:
         cols = getColumns(config, projectname)
         columns_to_update = []
         for col in cols:
             if col.columnType == "DefinedColumn":
-                # logging.info(f"Updating defined column '{col.internalName}'   conflictState={col.conflictState}")
+                logging.info(f"Updating defined column '{col.internalName}'   conflictState={col.conflictState}")
                 col.conflictState = "NoConflict"
                 columns_to_update.append(col)
 

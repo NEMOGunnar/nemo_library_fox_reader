@@ -808,7 +808,7 @@ def _couple_columns(
 
     for request in requestItems:
 
-        logging.info(f"Coupling: {request.attributeIds} after '{request.previousElementId}' in group '{request.containingGroupInternalName}'")
+        # logging.info(f"Coupling: {request.attributeIds} after '{request.previousElementId}' in group '{request.containingGroupInternalName}'")
 
         # Initialize request
         headers = config.connection_get_headers()
@@ -856,8 +856,8 @@ def _couple_columns(
                 log_error(
                     f"POST Request failed.\nURL: {url}\nObject: {request_as_json}\nStatus: {response.status_code}, error: {response.text}"
                 )
-            else:
-                logging.info(f"Coupling attributes successful '{response.text}' Status: {status_code}")
+            # else:
+            #     logging.info(f"Coupling attributes successful '{response.text}' Status: {status_code}")
         except Exception as e:
             logging.warning(
                 f"POST Request failed.\nURL: {url}\nObject: {request_as_json}\nException: {str(e)}"

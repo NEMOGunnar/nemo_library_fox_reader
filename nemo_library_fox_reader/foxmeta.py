@@ -423,6 +423,10 @@ class FOXMeta:
                 attr.parent_index == (start_attr.attribute_id if start_attr else None)
             ):
 
+                if attr.import_name.startswith("umsatz_199"):
+                    delasap5 = 42
+
+
                 # TODO: remove special handling of objects that are not supported yet
                 if attr.attribute_type == FOXAttributeType.Link and attr.original_attribute_index is not None:
                     # search for the referenced attribute
@@ -852,7 +856,10 @@ class FOXMeta:
                         cond = "(1==1)" # in InfoZoom the value is "Greater"
 
                     then_val = _quote_if_needed_for_formula(s_class_value)
-                    nested = f"IF ({cond} , {then_val} , {nested})"
+                    if then_val == nested:
+                        nested = nested  # skip this condition as it would lead to same value
+                    else:
+                        nested = f"IF ({cond} , {then_val} , {nested})"
 
                 expression_string = nested
                 if self.foxReaderInfo:
@@ -1070,6 +1077,9 @@ class FOXMeta:
             raise ValueError(
                 f"Referenced attribute with ID {original_attribute_index} not found for link attribute."
             )
+
+        if referenced_attribute.import_name.startswith("jahr_91"):
+            delasap5 = 42
 
         if referenced_attribute.attribute_type == FOXAttributeType.Link and referenced_attribute.original_attribute_index is not None:
             referenced_attribute = self._get_referenced_attribute(referenced_attribute.original_attribute_index)
