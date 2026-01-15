@@ -1,6 +1,7 @@
 import gzip
 import logging
 import json
+from logging import config
 import tempfile
 from pathlib import Path
 import re
@@ -26,6 +27,7 @@ from nemo_library_fox_reader.foxnemo_persistence_api import (
 )
 from nemo_library_fox_reader.foxnemo_persistence_api import createProjects
 from nemo_library_fox_reader.foxnemo_persistence_api import coupleAttributes    
+from nemo_library_fox_reader.foxnemo_persistence_api import setNumberOfRecords
 from nemo_library.model.column import Column
 from nemo_library.model.project import Project
 from nemo_library.utils.config import Config
@@ -457,17 +459,19 @@ def ReUploadFile(
                     log_error("Data ingestion request failed, status: FAILED")
                 if status == "finished":
                     if version == 2:
-                        records = df_filtered["records"].iloc[0]
-                        logging.info(f"Ingestion finished. {records} records loaded")
+                        records = str(int(df_filtered["records"].iloc[0]))
+
+                        setNumberOfRecords(config, projectname, records)
+                        logging.info(f"Ingestion {project_id} finished. {records} records loaded")
                     else:
-                        logging.info("Ingestion finished.")
+                        logging.info(f"Ingestion {project_id} finished.")
                     break
                 time.sleep(1 if version == 2 else 5)
 
         delete_duplicate_columns_generated_by_nemo(config, projectname)
         update_defined_columns(config, projectname)
         couple_attributes(config, projectname, foxReaderInfo)
-
+        
         # Trigger Analyze Table Task for version 2 if required
         if version == 2 and update_project_settings:
             data = {

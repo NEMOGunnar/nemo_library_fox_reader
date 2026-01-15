@@ -20,7 +20,6 @@ from nemo_library_fox_reader.foxnemo_persistence_api import (
     getColumns,
     getProjectID,
 )
-from nemo_library_fox_reader.foxnemo_persistence_api import coupleAttributes
 from nemo_library.model.attribute_group import AttributeGroup
 from nemo_library.model.attribute_link import AttributeLink
 from nemo_library.model.column import Column
@@ -382,28 +381,51 @@ class FOXMeta:
         # Prepare couple requests
         if self.foxReaderInfo is not None:
             self.foxReaderInfo.couple_attributes_requests = []
-        attribute_ids = []
-        previous_element_id = None
-        last_attribute_is_coupled = False
-        containing_group_internal_name = None
-        for attr in attributes:
-            if attr.coupled and attr.attribute_type != FOXAttributeType.Header:
-                if not last_attribute_is_coupled:
-                    containing_group_internal_name = self._get_parent_internal_name(attr)
-                attribute_ids.append(attr.get_nemo_name())
+
+            for coupled_attributes in self.foxReaderInfo.coupled_attributes_in_fox_file:
+                attributeIds = [a.get_nemo_name() for a in coupled_attributes]
+
+                previous_element_id = None
+                containing_group_internal_name = None
+                for attr in attributes:
+                    if attr.uuid == coupled_attributes[0].uuid:
+                        containing_group_internal_name = self._get_parent_internal_name(attr)
+                        break
+                    previous_element_id = attr.get_nemo_name()
+
+                couple_request = CoupleAttributesRequest(
+                    attributeIds=attributeIds,
+                    previousElementId=previous_element_id,
+                    containingGroupInternalName=containing_group_internal_name
+                )
+                self.foxReaderInfo.couple_attributes_requests.append(couple_request)
+
+
+
+
+
+        # attribute_ids = []
+        # previous_element_id = None
+        # last_attribute_is_coupled = False
+        # containing_group_internal_name = None
+        # for attr in attributes:
+        #     if attr.coupled and attr.attribute_type != FOXAttributeType.Header:
+        #         if not last_attribute_is_coupled:
+        #             containing_group_internal_name = self._get_parent_internal_name(attr)
+        #         attribute_ids.append(attr.get_nemo_name())
                 
-            else:   
-                if last_attribute_is_coupled and attribute_ids:
-                    couple_request = CoupleAttributesRequest(
-                        attributeIds=attribute_ids,
-                        previousElementId=previous_element_id,
-                        containingGroupInternalName=containing_group_internal_name
-                    )
-                    if self.foxReaderInfo:
-                        self.foxReaderInfo.couple_attributes_requests.append(couple_request)
-                    attribute_ids = []
-                previous_element_id = attr.get_nemo_name()
-            last_attribute_is_coupled = attr.coupled and attr.attribute_type != FOXAttributeType.Header
+        #     else:   
+        #         if last_attribute_is_coupled and attribute_ids:
+        #             couple_request = CoupleAttributesRequest(
+        #                 attributeIds=attribute_ids,
+        #                 previousElementId=previous_element_id,
+        #                 containingGroupInternalName=containing_group_internal_name
+        #             )
+        #             if self.foxReaderInfo:
+        #                 self.foxReaderInfo.couple_attributes_requests.append(couple_request)
+        #             attribute_ids = []
+        #         previous_element_id = attr.get_nemo_name()
+        #     last_attribute_is_coupled = attr.coupled and attr.attribute_type != FOXAttributeType.Header
 
 
     def _adjust_order(
@@ -423,42 +445,38 @@ class FOXMeta:
                 attr.parent_index == (start_attr.attribute_id if start_attr else None)
             ):
 
-                if attr.import_name.startswith("umsatz_199"):
-                    delasap5 = 42
 
+                # # TODO: remove special handling of objects that are not supported yet
+                # if attr.attribute_type == FOXAttributeType.Link and attr.original_attribute_index is not None:
+                #     # search for the referenced attribute
+                #     referenced_attr = self._get_referenced_attribute(attr.original_attribute_index)
+                #     if referenced_attr.nemo_not_supported:
 
-                # TODO: remove special handling of objects that are not supported yet
-                if attr.attribute_type == FOXAttributeType.Link and attr.original_attribute_index is not None:
-                    # search for the referenced attribute
-                    referenced_attr = self._get_referenced_attribute(attr.original_attribute_index)
-                    if referenced_attr.nemo_not_supported:
+                #         logging.warning(
+                #             f"Link {attr.attribute_name} references attribute {referenced_attr.attribute_name} which has an unsupported attribute type {referenced_attr.attribute_type}. Link is skipped."
+                #         )
+                #         continue
 
-                        logging.warning(
-                            f"Link {attr.attribute_name} references attribute {referenced_attr.attribute_name} which has an unsupported attribute type {referenced_attr.attribute_type}. Link is skipped."
-                        )
-                        continue
+                # logging.info(
+                #     f"move attribute {attr.attribute_name} (Type {attr.attribute_type}) before {last_attr.attribute_name if last_attr else 'None'} (Parent: {self._get_parent_internal_name(attr)})"
+                # )
 
-                if not attr.nemo_not_supported:
-
-                    # logging.info(
-                    #     f"move attribute {attr.attribute_name} (Type {attr.attribute_type}) before {last_attr.attribute_name if last_attr else 'None'} (Parent: {self._get_parent_internal_name(attr)})"
-                    # )
-                    focusMoveAttributeBefore(
-                        config=config,
-                        projectname=projectname,
-                        sourceInternalName=attr.get_nemo_name(),
-                        targetInternalName=(
-                            last_attr.get_nemo_name() if last_attr else None
-                        ),
-                        groupInternalName=self._get_parent_internal_name(attr),
-                    )
-                    last_attr = attr
+                focusMoveAttributeBefore(
+                    config=config,
+                    projectname=projectname,
+                    sourceInternalName=attr.get_nemo_name(),
+                    targetInternalName=(
+                        last_attr.get_nemo_name() if last_attr else None
+                    ),
+                    groupInternalName=self._get_parent_internal_name(attr),
+                )
+                last_attr = attr
 
                 # recursively adjust order for child attributes
                 if attr.attribute_type == FOXAttributeType.Header:
-                    # logging.info(
-                    #     f"Recursively adjusting order for child attributes of {attr.attribute_name} (Type {attr.attribute_type})"
-                    # )
+                    logging.info(
+                        f"Recursively adjusting order for child attributes of {attr.attribute_name} (Type {attr.attribute_type})"
+                    )
                     self._adjust_order(
                         config=config, projectname=projectname, start_attr=attr
                     )
@@ -576,7 +594,7 @@ class FOXMeta:
                             FOXFile._detect_date_format(None, attr)
                         )
 
-                    logging.info(f"Summary attribute {attr.get_nemo_name()} function {function} dataType='{dataType}'  format='{attr.format}' nemo_data_type='{attr.nemo_data_type}'")
+                    # logging.info(f"Summary attribute {attr.get_nemo_name()} function {function} dataType='{dataType}'  format='{attr.format}' nemo_data_type='{attr.nemo_data_type}'")
 
                     aggregation_function = get_aggregation_function(function)
                     column = Column(
@@ -623,6 +641,9 @@ class FOXMeta:
                 attr.nemo_not_supported = False
                 formula = attr.expression_string
                 is_valid_formula_parsed = False
+
+                if attr.attribute_name.startswith("Availability Check"): # and attr.uuid == "50651884_0335_47b4_b173_53eea39c4e0d":
+                    delasap = 42
 
                 try:
                     fox_formula_converter = FoxFormulaConverter(attr, self.attributes, self.foxReaderInfo)
@@ -911,8 +932,9 @@ class FOXMeta:
                         if "=" in condition and ">=" not in condition and "<=" not in condition and "!=" not in condition:
                             condition = condition.replace("=", "==")  # NEMO uses double '==' for equality
                         condition = condition.replace("<>", "!=")  # NEMO uses '!=' instead of '<>'
-                        if '""' in condition:
+                        if 'Matches(' in condition:
                             delasap = 42
+                            condition = condition.replace('Matches(', 'matches(')
                         condition = condition.replace('""', "'NULL'") # replace empty string with 'NULL'
 
                         class_value = case_val.get("class_value", "")
@@ -1078,11 +1100,11 @@ class FOXMeta:
                 f"Referenced attribute with ID {original_attribute_index} not found for link attribute."
             )
 
-        if referenced_attribute.import_name.startswith("jahr_91"):
-            delasap5 = 42
-
         if referenced_attribute.attribute_type == FOXAttributeType.Link and referenced_attribute.original_attribute_index is not None:
+            name = referenced_attribute.attribute_name
+            dataType = referenced_attribute.nemo_data_type
             referenced_attribute = self._get_referenced_attribute(referenced_attribute.original_attribute_index)
+            logging.info(f"Recursively resolving link {original_attribute_index}   from {name} to {referenced_attribute.attribute_name}  {dataType}=>{referenced_attribute.nemo_data_type}")
 
         return referenced_attribute
 

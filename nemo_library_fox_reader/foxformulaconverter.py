@@ -120,6 +120,10 @@ class FoxFormulaConverter:
                 value_str = self.get_token(tree.children[0])
                 if value_str == '""' or len(value_str) == 0:
                     value_str = "'NULL'"
+                if value_str == '"yes"' or value_str == "'yes'":
+                    value_str = "true'"
+                if value_str == '"no"' or value_str == "'no'":
+                    value_str = "'false'"
                 formula_part = formula_part + f'{value_str}'
                 self.last_used_string_token = value_str
                 # logging.info(f"inspect_tree  <<string>> value_str={value_str}")
@@ -175,6 +179,19 @@ class FoxFormulaConverter:
         try:
             token = f"{self.get_token(tree.children[0])}"
             token = token.lower()
+
+            # Convert some function names from InfoZoom to Nemo equivalents
+            if token == "replacematch":
+                token = "regex_replace"
+            if token == "matches":
+                token = "regex_matches"
+            if token == "concatenate":
+                token = "concate"
+            if token == "len":
+                token = "length"
+
+            # logging.info(f"Function call: '{delasap}'=>'{token}'")
+    
             without_paratheses = token in ["today","now"]
             if without_paratheses:  
                 token = token.upper()
@@ -185,7 +202,7 @@ class FoxFormulaConverter:
 
             if tree.children[1]:
                 child_args = tree.children[1].children[0]
-                formula_delasap = self.inspect_tree(child_args, formula_part)
+                # formula_delasap = self.inspect_tree(child_args, formula_part)
 
                 formula_part = self.inspect_tree(tree.children[1], formula_part)
 

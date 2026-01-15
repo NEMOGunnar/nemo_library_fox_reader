@@ -991,19 +991,19 @@ class FOXFile:
             if attr.attribute_type == FOXAttributeType.Normal:
             # if attr.attribute_type != FOXAttributeType.Header:
                 self._guess_data_conversion(attr)
-                logging.info(f"Regular attribute '{attr.format}'   '{attr.nemo_data_type}'  '{attr.get_nemo_name()}'")
+                # logging.info(f"Regular attribute '{attr.format}'   '{attr.nemo_data_type}'  '{attr.get_nemo_name()}'")
 
             if attr.attribute_type == FOXAttributeType.Expression:
                 self._guess_data_conversion(attr)
-                logging.info(f"Expression attribute '{attr.format}'   '{attr.nemo_data_type}'  '{attr.get_nemo_name()}'")
+                # logging.info(f"Expression attribute '{attr.format}'   '{attr.nemo_data_type}'  '{attr.get_nemo_name()}'")
 
             if attr.attribute_type == FOXAttributeType.CaseDiscrimination:
                 self._guess_data_conversion(attr)
-                logging.info(f"CaseDiscrimination attribute '{attr.format}'  '{attr.nemo_data_type}'  '{attr.get_nemo_name()}'")
+                # logging.info(f"CaseDiscrimination attribute '{attr.format}'  '{attr.nemo_data_type}'  '{attr.get_nemo_name()}'")
 
             if attr.attribute_type == FOXAttributeType.Classification:
                 self._guess_data_conversion(attr)
-                logging.info(f"Classification attribute '{attr.format}'   '{attr.nemo_data_type}'  '{attr.get_nemo_name()}'")
+                # logging.info(f"Classification attribute '{attr.format}'   '{attr.nemo_data_type}'  '{attr.get_nemo_name()}'")
 
             if attr.attribute_type == FOXAttributeType.Summary:
                 # self._guess_data_conversion(attr) this call results in 0 records :-(
@@ -1011,6 +1011,36 @@ class FOXFile:
                 # logging.info(f"Summary attribute '{attr.attribute_name}'  '{attr.format}'   '{attr.nemo_data_type}'")
 
             attributes.append(attr)
+
+        if self.foxReaderInfo is not None:
+            self.foxReaderInfo.coupled_attributes_in_fox_file = []
+
+        if self.global_information.version_short >= "FOX2004/05/19":
+            num_coupled_groups = reader.read_int()
+            logging.info(f"Number of coupled attribute groups: {num_coupled_groups}")
+            # if self.foxReaderInfo is not None:
+            #     self.foxReaderInfo.couple_attributes_in_fox_file.
+
+            for _ in range(num_coupled_groups):
+                attributes_in_coupled_group = []
+                last_attribute_leads = reader.read_bool()
+                sorted_reverse = reader.read_bool()
+                num_attributes_in_group = reader.read_int()
+
+                for _ in range(num_attributes_in_group):
+                    is_part_of_query = reader.read_bool()
+                    attribute_index_in_file = reader.read_int()
+                    if attribute_index_in_file != 4294967295 and not is_part_of_query:
+                        try:
+                            attr = attributes[attribute_index_in_file]
+                            if attr is not None:
+                                attributes_in_coupled_group.append(attr)
+                        except IndexError:
+                            pass
+
+                if self.foxReaderInfo is not None and len(attributes_in_coupled_group) > 1:
+                    self.foxReaderInfo.coupled_attributes_in_fox_file.append(attributes_in_coupled_group)
+                    # logging.info(f"Coupled attribute group: {[a for a in attributes_in_coupled_group]}, last_attribute_leads={last_attribute_leads}, sorted_reverse={sorted_reverse}")
 
         # ignore id of attribute and overwrite it with the index
         for idx, attr in enumerate(attributes):

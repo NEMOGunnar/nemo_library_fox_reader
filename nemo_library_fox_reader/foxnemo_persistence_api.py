@@ -877,3 +877,64 @@ def coupleAttributes(
         requestItems=request,
         dictionary_internal_names_to_attribute_ids=dictionary_internal_names_to_attribute_ids
     )
+
+
+def _set_number_of_records(
+    config: Config,
+    projectname: str,
+    numberOfRecords: str
+) -> None:
+    """
+    Generic function to set number of records.
+
+    :param config: Configuration containing connection details
+    :param projectname: Name of the project
+    :param numberOfRecords: Number of records to set
+    """
+
+
+    # Initialize request
+    headers = config.connection_get_headers()
+    project_id = getProjectID(config, projectname)
+    params = {"translationHandling": "UseAuxiliaryTranslationFields"}
+
+    # request.tenant = config.get_tenant()
+    # request.projectId = project_id e79e0659-f1af-4e74-b3ba-1f84e0bc288d
+
+    request_as_json = numberOfRecords
+    url = f"{config.get_config_nemo_url()}/api/nemo-persistence/ProjectProperty/project/{project_id}/ExpNumberOfRecords"
+
+    try:
+        response = requests.put(
+            url,
+            json=request_as_json,
+            headers=headers,
+            params=params,
+        )
+
+        status_code = response.status_code
+        if response.status_code > 201:
+            log_error(
+                f"PUT Request failed.\nURL: {url}\nObject: {request_as_json}\nStatus: {response.status_code}, error: {response.text}"
+            )
+    except Exception as e:
+        logging.warning(
+            f"PUT Request failed.\nURL: {url}\nObject: {request_as_json}\nException: {str(e)}"
+        )   
+        pass
+    
+    
+
+
+def setNumberOfRecords(
+    config: Config,
+    projectname: str,
+    numberOfRecords: str
+) -> None:
+    
+    _set_number_of_records(
+        config=config,
+        projectname=projectname,
+        numberOfRecords=numberOfRecords
+    )
+
