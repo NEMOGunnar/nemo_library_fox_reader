@@ -5,6 +5,8 @@ FOXReader module for reading and importing FOX files into NEMO projects.
 import logging
 import re
 from typing import TypeVar
+import attr
+import attr
 import pandas as pd
 from dateutil import parser as dateutil_parser
 
@@ -60,6 +62,10 @@ class FOXFile:
 
         self.attributes = self._read_attributes(self.global_information)
         self.global_information = self._read_global_part_2(self.global_information)
+
+        #self._set_values_for_datetime_attributes_depending_on_format(self.attributes)
+        logging.info("Removed 2026-01-22: _set_values_for_datetime_attributes_depending_on_format(self.attributes)")
+
         self.data_frame = self._create_dataframe(
             self.global_information, self.attributes
         )
@@ -119,13 +125,9 @@ class FOXFile:
                                 )
                                 # If you truly want pure date objects later, call .dt.date when exporting
                                 delasap1 = df[attribute_nemo_name].to_list()
+                                delasap2 = delasap1
 
                             case "datetime":
-                                # fix some known odd values (keep user code behaviour)
-                                for val in attr.values:
-                                    if val is not None and val != "":
-                                        # val = val.replace(", 00:00:00", "")
-                                        xxx = val
 
                                 df[attribute_nemo_name] = self._parse_datetime_series_fuzzy(
                                     df[attribute_nemo_name],
@@ -188,6 +190,119 @@ class FOXFile:
             df = pd.DataFrame()
 
         return df
+
+
+    def _set_values_for_datetime_attributes_depending_on_format(self, attributes: list[FoxAttribute]) -> None:
+        for attr in attributes:
+            if attr.nemo_data_type == "datetime" or attr.nemo_data_type == "date":
+                if attr.nemo_pandas_conversion_format:
+                    # Convert FOX format string to pandas/strftime format
+                    pandas_format = attr.nemo_pandas_conversion_format #self._convert_fox_format_to_strftime(attr.format)
+                    has_complete_date_part = self._check_format_has_complete_date_part(pandas_format)
+                    has_complete_time_part = self._check_format_has_complete_time_part(pandas_format)
+
+                    if not has_complete_date_part and not has_complete_time_part:
+                        attr.nemo_data_type = "string"
+                        for i in range(len(attr.values)):
+                            if attr.values[i] is not None and attr.values[i] != "":
+                                # try:
+                                delasap5 = str(attr.values[i])
+                                delasap6 = delasap5
+                                #     # Convert value to datetime if not already
+                                #     if isinstance(attr.values[i], str):
+                                #         dt_value = pd.to_datetime(attr.values[i])
+                                #     else:
+                                #         dt_value = pd.to_datetime(attr.values[i])
+                                #     # Format using strftime
+                                #     attr.values[i] = dt_value.strftime(pandas_format)
+                                # except (ValueError, TypeError, AttributeError):
+                                #     # If conversion fails, keep original value
+                                #     attr.values[i] = str(attr.values[i])
+
+
+    def _check_format_has_complete_date_part(self, pandas_format: str) -> bool:
+        """
+        Check if the given pandas/strftime format string contains complete date components (year, month, day).
+        
+        Args:
+            pandas_format: pandas/strftime format string
+        """
+        
+        if pandas_format is None:
+            return False
+
+        # Check for presence of year, month, and day components
+        has_year = "%Y" in pandas_format or "%y" in pandas_format
+        has_month = "%m" in pandas_format
+        has_day = "%d" in pandas_format
+
+        return has_year and has_month and has_day
+
+
+    def _check_format_has_complete_time_part(self, pandas_format: str) -> bool:
+
+        if pandas_format is None:
+            return False
+
+        has_hour = "%H" in pandas_format or "%I" in pandas_format
+        has_minute = "%M" in pandas_format
+
+        return has_hour and has_minute
+
+
+    def _convert_fox_format_to_strftime(self, fox_format: str) -> str | None:
+        """
+        Convert FOX format string (e.g., "tt.mm.", "%d%m") to Python strftime format.
+        
+        Args:
+            fox_format: Format string from FOX file
+            
+        Returns:
+            strftime format string or None if conversion is not applicable
+        """
+        if not fox_format:
+            return None
+        
+        # Already a strftime format (contains %), use as-is
+        if "%" in fox_format:
+            return fox_format
+        
+        # Convert FOX date/time format to strftime
+        pandas_string = fox_format
+        
+        # Deal with time components
+        pandas_string = pandas_string.replace("hhh:", "%H:" if "AM" not in fox_format else "%I")
+        pandas_string = pandas_string.replace("hh:", "%H:" if "AM" not in fox_format else "%I")
+        pandas_string = pandas_string.replace("h:", "%H:" if "AM" not in fox_format else "%I")
+        pandas_string = pandas_string.replace("sss:", "%H:" if "AM" not in fox_format else "%I")
+        pandas_string = pandas_string.replace("ss:", "%H:" if "AM" not in fox_format else "%I")
+        pandas_string = pandas_string.replace("s:", "%H:" if "AM" not in fox_format else "%I")
+        pandas_string = pandas_string.replace(":mmm", ":%M")
+        pandas_string = pandas_string.replace(":mm", ":%M")
+        pandas_string = pandas_string.replace(":m", ":%M")
+        pandas_string = pandas_string.replace(":ss", ":%S")
+        pandas_string = pandas_string.replace(":s", ":%S")
+        
+        # Deal with date components
+        pandas_string = pandas_string.replace("jjjj", "%Y")
+        pandas_string = pandas_string.replace("yyyy", "%Y")
+        pandas_string = pandas_string.replace("aaaa", "%Y")
+        pandas_string = pandas_string.replace("jj", "%y")
+        pandas_string = pandas_string.replace("yy", "%y")
+        pandas_string = pandas_string.replace("aa", "%y")
+        pandas_string = pandas_string.replace("mm", "%m")
+        pandas_string = pandas_string.replace("dddd", "%d")
+        pandas_string = pandas_string.replace("dd", "%d")
+        pandas_string = pandas_string.replace("tttt", "%d")
+        pandas_string = pandas_string.replace("tt", "%d")
+        pandas_string = pandas_string.replace("t", "%d")
+        
+        # Handle AM/PM
+        if "AM" in pandas_string:
+            pandas_string = pandas_string.replace("AM", "%p")
+        
+        return pandas_string if "%" in pandas_string else None
+
 
     def _detect_number_format(
         self, attr: FoxAttribute
@@ -275,6 +390,7 @@ class FOXFile:
 
         return (num_type, thousands_sep, decimal_sep)
 
+
     def _detect_date_format(self, attr: FoxAttribute) -> tuple[str, str | None]:
         """
         Detect date type and conversion format from InfoZoom pattern.
@@ -319,6 +435,7 @@ class FOXFile:
         pandas_string = pandas_string.replace(
             "s:", "%H:" if not "AM" in attr.format else "%I"
         )
+        pandas_string = pandas_string.replace(":mmm", ":%M") #USI
         pandas_string = pandas_string.replace(":mm", ":%M")
         pandas_string = pandas_string.replace(":m", ":%M")
         pandas_string = pandas_string.replace(":ss", ":%S")
@@ -335,6 +452,7 @@ class FOXFile:
         # pandas_string = pandas_string.replace("m", "%m") #USI
         pandas_string = pandas_string.replace("dd", "%d")
         # USI pandas_string = pandas_string.replace("d", "%d")
+        pandas_string = pandas_string.replace("dddd", "%D") #USI
         pandas_string = pandas_string.replace("tttt", "%D") #USI
         pandas_string = pandas_string.replace("tt", "%d")
         pandas_string = pandas_string.replace("t", "%d")
@@ -356,6 +474,84 @@ class FOXFile:
             pandas_string = None
 
         return (data_type, pandas_string)
+
+
+    def _convert_date_format_to_hana_date_format(self, attr: FoxAttribute) -> tuple[str, str | None]:
+        """
+        Detect date type and conversion format from InfoZoom pattern into HANA format.
+
+        Args:
+            pattern (str): Format string like "tt.mm.jj"
+
+        Returns:
+            tuple: (type, conversion format)
+        """
+        data_type = "string"
+        format_string = None
+
+        if not attr.format:
+            return (data_type, format_string)
+    
+        format_string = attr.format.lower()
+        format_string = format_string.replace(
+            "hhh:", "HH24:" if not "AM" in attr.format else "HH12:"
+        )
+        format_string = format_string.replace(
+            "hh:", "HH24:" if not "AM" in attr.format else "HH12:"
+        )
+        format_string = format_string.replace(
+            "h:", "HH24:" if not "AM" in attr.format else "HH12:"
+        )
+        format_string = format_string.replace(
+            "sss:", "HH24:" if not "AM" in attr.format else "HH12:"
+        )
+        format_string = format_string.replace(
+            "ss:", "HH24:" if not "AM" in attr.format else "HH12:"
+        )
+        format_string = format_string.replace(
+            "s:", "HH24:" if not "AM" in attr.format else "HH12:"
+        )
+        format_string = format_string.replace(":mmm", ":MI") #check
+        format_string = format_string.replace(":mm", ":MI")
+        format_string = format_string.replace(":m", ":MI")
+        format_string = format_string.replace(":ss", ":SS")
+        format_string = format_string.replace(":s", ":SS")
+
+        # deal with date now
+        format_string = format_string.replace("jjjj", "YYYY")
+        format_string = format_string.replace("yyyy", "YYYY")
+        format_string = format_string.replace("aaaa", "YYYY ")
+        format_string = format_string.replace("jj", "YY")
+        format_string = format_string.replace("yy", "YY")
+        format_string = format_string.replace("aa", "YY")
+        format_string = format_string.replace("mm", "MM")
+        format_string = format_string.replace("dddd", "D")
+        format_string = format_string.replace("ddd", "DAY")
+        format_string = format_string.replace("dd", "DD")
+        format_string = format_string.replace("tttt", "D")
+        format_string = format_string.replace("ttt", "DAY")
+        format_string = format_string.replace("tt", "DD")
+        format_string = format_string.replace("t", "DD")
+
+        data_type = "string"
+
+        # now guess the data type
+        has_year_part = format_string.find("YY") != -1
+        has_month_part = format_string.find("MM") != -1
+        has_day_part = format_string.find("DD") != -1
+        has_hour_part = format_string.find("HH") != -1
+        has_minute_part = format_string.find("MI") != -1
+
+        if has_year_part and has_month_part and has_day_part:
+            if has_hour_part and has_minute_part:
+                data_type = "datetime"
+            else:
+                data_type = "date"
+
+        logging.info(f"_convert_date_format_to_hana_date_format('{attr.format}') => '{format_string}'  '{data_type}'  '{attr.attribute_name}'")
+
+        return (data_type, format_string)
+
 
     def _parse_datetime_series_fuzzy(self, series: pd.Series, fmt: str | None = None, date_only: bool = False) -> pd.Series:
         """Parse a Series to datetimes using a fast vectorized pass with `pd.to_datetime(format=...)` and
@@ -910,6 +1106,7 @@ class FOXFile:
             if attr.permanently_hidden != 0 or not attr.shown:
                 if self.foxReaderInfo:
                     if attr.permanently_hidden != 0:
+                        self.foxReaderInfo.list_of_ids_permanently_hidden_columns.append(attr.uuid)
                         self.foxReaderInfo.add_issue(IssueType.ATTRIBUTEPERMANENTLYHIDDEN, attr.attribute_name, "", attr.format, extra_info="")
                         logging.info(f"Attribute '{attr.attribute_name}' is permanently hidden.")
                     else:
@@ -959,9 +1156,10 @@ class FOXFile:
                 )
 
                 attr.values = [value_store[i] for i in index_array]
-                # for val in attr.values:
-                #     if len(val) > 500:
-                #         logging.warning(f"Value too long in attribute '{attr.attribute_name}': '{val[:100]}...{val[-100:]}'")
+                for i in range(len(attr.values)):
+                    if len(attr.values[i]) > 500:
+                        logging.warning(f"Value too long in attribute '{attr.attribute_name}': '{attr.values[i][:100]}...{attr.values[i][-100:]}'")
+                        attr.values[i] = attr.values[i][:500]
 
                 attr.value_frequency_coloring = reader.read_bool()
                 if attr.value_frequency_coloring:
@@ -1040,7 +1238,7 @@ class FOXFile:
 
                 if self.foxReaderInfo is not None and len(attributes_in_coupled_group) > 1:
                     self.foxReaderInfo.coupled_attributes_in_fox_file.append(attributes_in_coupled_group)
-                    # logging.info(f"Coupled attribute group: {[a for a in attributes_in_coupled_group]}, last_attribute_leads={last_attribute_leads}, sorted_reverse={sorted_reverse}")
+                    logging.info(f"Coupled attribute group: {[a for a in attributes_in_coupled_group]}, last_attribute_leads={last_attribute_leads}, sorted_reverse={sorted_reverse}")
 
         # ignore id of attribute and overwrite it with the index
         for idx, attr in enumerate(attributes):
@@ -1087,6 +1285,10 @@ class FOXFile:
 
         elif any(token in format_clean for token in ["d", "m", "y", "t", "s", "h"]):
             # we have a candidate for a date(time)
+            hana_data_type, attr.hana_conversion_format = (
+                self._convert_date_format_to_hana_date_format(attr)
+            )
+            
             attr.nemo_data_type, attr.nemo_pandas_conversion_format = (
                 self._detect_date_format(attr)
             )

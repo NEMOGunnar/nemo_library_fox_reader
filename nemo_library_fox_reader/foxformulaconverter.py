@@ -121,7 +121,7 @@ class FoxFormulaConverter:
                 if value_str == '""' or len(value_str) == 0:
                     value_str = "'NULL'"
                 if value_str == '"yes"' or value_str == "'yes'":
-                    value_str = "true'"
+                    value_str = "'true'"
                 if value_str == '"no"' or value_str == "'no'":
                     value_str = "'false'"
                 formula_part = formula_part + f'{value_str}'
@@ -224,6 +224,9 @@ class FoxFormulaConverter:
 
             if not without_paratheses:
                 formula_part = formula_part + ') '
+
+            if token == "contains":
+                formula_part = f"{formula_part} == 'True'"
 
             if self.foxReaderInfo:
                 self.foxReaderInfo.add_issue(IssueType.FUNCTIONCALL, self.attr.attribute_name, None, self.attr.format, extra_info=token)
@@ -416,7 +419,13 @@ class FoxFormulaConverter:
             original_attr_index = referenced_attribute.original_attribute_index
             if original_attr_index is not None and original_attr_index < len(self.all_attributes):
                 # logging.info(f"Resolving link attribute '{referenced_attribute.attribute_name}' to original attribute index {original_attr_index} {self.attr.attribute_name}")
-                referenced_attribute = self.all_attributes[original_attr_index]
+                name = referenced_attribute.attribute_name
+                dataType = referenced_attribute.nemo_data_type
+                if referenced_attribute.nemo_data_type != "datetime":
+                    referenced_attribute = self.all_attributes[original_attr_index]
+                    logging.info(f"Recursively resolving link {original_attr_index}   from {name} to {referenced_attribute.attribute_name}  {dataType}=>{referenced_attribute.nemo_data_type}")
+                else:
+                    logging.info(f"Not resolving link {original_attr_index}   from {name} to {referenced_attribute.attribute_name}  {dataType}=>{referenced_attribute.nemo_data_type}")
 
         self.last_referenced_attribute = referenced_attribute
         return referenced_attribute

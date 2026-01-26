@@ -3,6 +3,7 @@ from typing import TypeVar
 import logging
 import math
 
+
 from nemo_library.features.focus import focusMoveAttributeBefore
 from nemo_library_fox_reader.foxfile import FOXFile
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
@@ -383,7 +384,10 @@ class FOXMeta:
             self.foxReaderInfo.couple_attributes_requests = []
 
             for coupled_attributes in self.foxReaderInfo.coupled_attributes_in_fox_file:
-                attributeIds = [a.get_nemo_name() for a in coupled_attributes]
+                
+                attributeIds = [a.get_nemo_name() for a in coupled_attributes if a.permanently_hidden == 0]
+                if len(attributeIds) == 0:
+                    continue
 
                 previous_element_id = None
                 containing_group_internal_name = None
@@ -398,6 +402,8 @@ class FOXMeta:
                     previousElementId=previous_element_id,
                     containingGroupInternalName=containing_group_internal_name
                 )
+                logging.info(f"Prepared couple request: {couple_request}")
+                
                 self.foxReaderInfo.couple_attributes_requests.append(couple_request)
 
 
@@ -655,6 +661,11 @@ class FOXMeta:
                     pass
 
                 nemo_data_type = attr.nemo_data_type
+                if nemo_data_type == "date" or nemo_data_type == "datetime":
+                   hana_data_type, hana_conversion_format = (FOXFile._convert_date_format_to_hana_date_format(None, attr))
+                   if hana_data_type == "string":
+                       formula = f"format({formula}, '{hana_conversion_format}')"
+
                 # nemo_data_type = "string"
 
                 # try:
@@ -718,6 +729,8 @@ class FOXMeta:
                 is_link_to_date_with_date_format = False
                 nemo_pandas_conversion_format = None
                 if referenced_attr.nemo_data_type in ["date", "datetime"]:
+
+                    hana_data_type, attr.hana_conversion_format = (FOXFile._convert_date_format_to_hana_date_format(None, attr))
                     nemo_data_type, nemo_pandas_conversion_format = (FOXFile._detect_date_format(None, attr))
                     if nemo_data_type in ["date", "datetime"]:
                         is_link_to_date_with_date_format = True
@@ -751,7 +764,11 @@ class FOXMeta:
                     if nemo_pandas_conversion_format == "%D": #USI
                         formula = f"weekday({referenced_attribute_link})"
                         nemo_data_type = "string"
-                        
+
+                    if formula is None and attr.hana_conversion_format != "": 
+                        formula = f"format({referenced_attribute_link}, '{attr.hana_conversion_format}')"
+                        nemo_data_type = "string"
+
                     if formula is not None:
                         # the expresssion attribute is a DefinedColumn in Nemo
                         column = Column(
@@ -768,6 +785,19 @@ class FOXMeta:
                                 )
                         columns.append(column)
                     else:
+                        column = Column(
+                            displayName=get_display_name(attr.attribute_name),
+                            importName=attr.get_nemo_name(),
+                            internalName=attr.get_nemo_name(),
+                            dataType="string",
+                            parentAttributeGroupInternalName=self._get_parent_internal_name(
+                                attr
+                            ),
+                            columnType="ExportedColumn",
+                            unit=attr.nemo_unit,
+                        )
+                        columns.append(column)
+                        logging.info(f"Unsupported format: {attr.attribute_name}, {attr.expression_string}, {attr.format}")
                         if self.foxReaderInfo:
                             self.foxReaderInfo.add_issue(IssueType.UNSUPPORTEDFORMAT, attr.attribute_name, attr.expression_string, attr.format)
 
@@ -1035,9 +1065,10 @@ class FOXMeta:
                 nemo_pandas_conversion_format = None
                 if referenced_attr.nemo_data_type in ["date", "datetime"]:
                     nemo_data_type, nemo_pandas_conversion_format = (FOXFile._detect_date_format(None, attr))
+                    hana_data_type, attr.hana_conversion_format = (FOXFile._convert_date_format_to_hana_date_format(None, attr))
                     if nemo_data_type in ["date", "datetime"]:
-                        if nemo_pandas_conversion_format in ["%Y", "%y", "%m", "m", "%d", "d", "%D", "%H", "%M", "%S"]:
-                            is_link_to_date_with_date_format = True
+                        # if nemo_pandas_conversion_format in ["%Y", "%y", "%m", "m", "%d", "d", "%D", "%H", "%M", "%S"]:
+                        is_link_to_date_with_date_format = True
                             # logging.info(f"Link to date detected {attr.attribute_name} {referenced_attr.attribute_name} {nemo_data_type} {attr.format} {referenced_attr.format} {nemo_pandas_conversion_format}")
 
                 if not is_link_to_date_with_date_format:
@@ -1103,8 +1134,10 @@ class FOXMeta:
         if referenced_attribute.attribute_type == FOXAttributeType.Link and referenced_attribute.original_attribute_index is not None:
             name = referenced_attribute.attribute_name
             dataType = referenced_attribute.nemo_data_type
-            referenced_attribute = self._get_referenced_attribute(referenced_attribute.original_attribute_index)
-            logging.info(f"Recursively resolving link {original_attribute_index}   from {name} to {referenced_attribute.attribute_name}  {dataType}=>{referenced_attribute.nemo_data_type}")
-
+            if referenced_attribute.nemo_data_type != "datetime":
+                referenced_attribute = self._get_referenced_attribute(referenced_attribute.original_attribute_index)
+                logging.info(f"Recursively resolving link {original_attribute_index}   from {name} to {referenced_attribute.attribute_name}  {dataType}=>{referenced_attribute.nemo_data_type}")
+            else:
+                logging.info(f"Not resolving link {original_attribute_index}   from {name} to {referenced_attribute.attribute_name}  {dataType}=>{referenced_attribute.nemo_data_type}")
         return referenced_attribute
 

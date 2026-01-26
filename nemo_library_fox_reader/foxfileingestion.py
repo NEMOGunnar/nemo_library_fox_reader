@@ -471,6 +471,7 @@ def ReUploadFile(
         delete_duplicate_columns_generated_by_nemo(config, projectname)
         update_defined_columns(config, projectname)
         couple_attributes(config, projectname, foxReaderInfo)
+        delete_permanently_hidden_columns(config, projectname, foxReaderInfo)
         
         # Trigger Analyze Table Task for version 2 if required
         if version == 2 and update_project_settings:
@@ -549,6 +550,16 @@ def delete_duplicate_columns_generated_by_nemo(config: Config, projectname: str)
         logging.info(f"Delete duplicate columns successful")
     except Exception as e:
         logging.warning(f"Failed to delete duplicate columns: \n{e}")
+        pass
+
+def delete_permanently_hidden_columns(config: Config, projectname: str, foxReaderInfo: FOXReaderInfo | None = None) -> None:
+    try:
+        if foxReaderInfo is not None and foxReaderInfo.list_of_ids_permanently_hidden_columns is not None and len(foxReaderInfo.list_of_ids_permanently_hidden_columns) > 0:
+            deleteColumns(config, foxReaderInfo.list_of_ids_permanently_hidden_columns)
+
+        logging.info(f"Delete permanently hidden columns successful")
+    except Exception as e:
+        logging.warning(f"Failed to delete permanently hidden columns: \n{e}")
         pass
 
 

@@ -138,6 +138,7 @@ class FoxAttribute:
     nemo_pandas_conversion_format: str = ""
     nemo_decimal_point: str = ""
     nemo_numeric_separator: str = ""
+    hana_conversion_format: str = ""
     nemo_unit: str = ""
     nemo_not_supported: bool = False
 
