@@ -1,6 +1,7 @@
 import logging
 from nemo_library_fox_reader.foxstatisticsinfo import FOXStatisticsInfo, IssueType
 from nemo_library_fox_reader.foxattribute import FoxAttribute
+from nemo_library_fox_reader.foxprogressmanager import FOXProgressManager
 from nemo_library_fox_reader.models.couple_attributes_request import CoupleAttributesRequest
 
 
@@ -8,6 +9,12 @@ class FOXReaderInfo:
     """
     class for storing statistics information about the implementation of InfoZoom features.
     """
+
+    def add_progress_manager(self, progress_manager: FOXProgressManager):
+        self.progress_manager = progress_manager
+
+    progress_manager = FOXProgressManager()
+
 
     current_file_name: str = ""
     current_file_path: str = ""
@@ -49,8 +56,10 @@ class FOXReaderInfo:
     attributes_with_sort_order_used: list[str] = []
     attributes_with_html_links_used: list[str] = []
     
+    max_string_length_in_fox_file: int = 0
+    
     coupled_attributes_in_fox_file: list[list[FoxAttribute]] = []
     couple_attributes_requests: list[CoupleAttributesRequest] = []
     dictionary_internal_names_to_attribute_ids: dict[str, str] = {} 
     dictionary_internal_names_to_data_types: dict[str, str] = {}
-    list_of_ids_permanently_hidden_columns: list[str] = []
+    list_of_ids_permanently_hidden_columns: list[FoxAttribute] = []

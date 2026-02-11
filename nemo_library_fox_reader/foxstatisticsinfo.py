@@ -60,4 +60,5 @@ class IssueType(Enum):
     FIXEDCOLUMNWIDTH = "fixed_column_width"
     COLUMNWIDTHUSED = "column_width_used"
     AMPELCOLORCODING = "ampel_color_coding"
+    VALUETOOLONG = "value_too_long"
     

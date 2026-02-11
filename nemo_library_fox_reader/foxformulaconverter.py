@@ -413,6 +413,7 @@ class FoxFormulaConverter:
             None,
         )
 
+        name_of_attr = self.attr.attribute_name if self.attr else "NOT FOUND"
 
         while referenced_attribute and referenced_attribute.attribute_type == FOXAttributeType.Link:
             # For link attributes, resolve to the original attribute they point to
@@ -421,11 +422,12 @@ class FoxFormulaConverter:
                 # logging.info(f"Resolving link attribute '{referenced_attribute.attribute_name}' to original attribute index {original_attr_index} {self.attr.attribute_name}")
                 name = referenced_attribute.attribute_name
                 dataType = referenced_attribute.nemo_data_type
-                if referenced_attribute.nemo_data_type != "datetime":
-                    referenced_attribute = self.all_attributes[original_attr_index]
-                    logging.info(f"Recursively resolving link {original_attr_index}   from {name} to {referenced_attribute.attribute_name}  {dataType}=>{referenced_attribute.nemo_data_type}")
+                if referenced_attribute.nemo_data_type not in ["datetime", "date"]:
+                    logging.info(f"Recursively resolving link {original_attr_index}   from {name_of_attr} to {referenced_attribute.attribute_name}  {dataType}=>{referenced_attribute.nemo_data_type}")
+                    # referenced_attribute = self.all_attributes[original_attr_index]
+                    return referenced_attribute
                 else:
-                    logging.info(f"Not resolving link {original_attr_index}   from {name} to {referenced_attribute.attribute_name}  {dataType}=>{referenced_attribute.nemo_data_type}")
+                    logging.info(f"Not resolving link {original_attr_index}   from {name_of_attr} to {referenced_attribute.attribute_name}  {dataType}=>{referenced_attribute.nemo_data_type}")
 
         self.last_referenced_attribute = referenced_attribute
         return referenced_attribute

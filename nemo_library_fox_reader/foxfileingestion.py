@@ -18,6 +18,7 @@ from pandas.api.types import is_datetime64_any_dtype
 
 from nemo_library_fox_reader.foxfile import FOXFile
 from nemo_library_fox_reader.foxmeta import FOXMeta
+from nemo_library_fox_reader.foxprogressmanager import FOXProgressManager
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 from nemo_library_fox_reader.foxnemo_persistence_api import (
     createColumns,
@@ -154,7 +155,13 @@ def ReUploadDataFrame(
             foxReaderInfo=foxReaderInfo,
             statistics_only=statistics_only
         )
-        logging.info(f"upload to project {projectname} completed")
+        FOXProgressManager.info(f"upload to project {projectname} completed")
+        
+        logging.info("==================== Summary of file ingestion: ====================================")
+        for message in FOXProgressManager.allWarnings:
+            logging.warning(message)
+        for message in FOXProgressManager.allInfos:
+            logging.info(message)
 
 
 
@@ -462,7 +469,7 @@ def ReUploadFile(
                         records = str(int(df_filtered["records"].iloc[0]))
 
                         setNumberOfRecords(config, projectname, records)
-                        logging.info(f"Ingestion {project_id} finished. {records} records loaded")
+                        FOXProgressManager.info(f"Ingestion {project_id} finished. {records} records loaded")
                     else:
                         logging.info(f"Ingestion {project_id} finished.")
                     break
@@ -555,9 +562,18 @@ def delete_duplicate_columns_generated_by_nemo(config: Config, projectname: str)
 def delete_permanently_hidden_columns(config: Config, projectname: str, foxReaderInfo: FOXReaderInfo | None = None) -> None:
     try:
         if foxReaderInfo is not None and foxReaderInfo.list_of_ids_permanently_hidden_columns is not None and len(foxReaderInfo.list_of_ids_permanently_hidden_columns) > 0:
-            deleteColumns(config, foxReaderInfo.list_of_ids_permanently_hidden_columns)
+            cols = getColumns(config, projectname)
+            columns_to_delete = []
+            for attr in foxReaderInfo.list_of_ids_permanently_hidden_columns:
+                col = next((c for c in cols if c.importName == attr.get_nemo_name()), None)
+                if col is not None:
+                    logging.info(f"Permanently hidden column found to delete '{col.internalName}'  id={col.id}")
+                    columns_to_delete.append(col.id)
+            
+            if len(columns_to_delete) > 0:
+                deleteColumns(config, columns_to_delete)
+                logging.info(f"Delete permanently hidden columns successful")
 
-        logging.info(f"Delete permanently hidden columns successful")
     except Exception as e:
         logging.warning(f"Failed to delete permanently hidden columns: \n{e}")
         pass
@@ -569,13 +585,12 @@ def update_defined_columns(config: Config, projectname: str) -> None:
         columns_to_update = []
         for col in cols:
             if col.columnType == "DefinedColumn":
-                logging.info(f"Updating defined column '{col.internalName}'   conflictState={col.conflictState}")
+                # logging.info(f"#USI removed: Updating defined column '{col.internalName}'   conflictState={col.conflictState}")
                 col.conflictState = "NoConflict"
                 columns_to_update.append(col)
 
-        createColumns(config, projectname, columns_to_update)
-
-        logging.info(f"Updating defined columns successful")
+        # createColumns(config, projectname, columns_to_update)
+        # logging.info(f"Updating defined columns successful")
 
                 # col_id = col.id
                 # data = {

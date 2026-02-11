@@ -4,6 +4,7 @@ foxbinaryreader.py: Utility for reading binary data from FOX files.
 
 import struct
 import logging
+from nemo_library_fox_reader.foxprogressmanager import FOXProgressManager
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 from nemo_library_fox_reader.foxstatisticsinfo import IssueType
 from typing import BinaryIO
@@ -358,7 +359,7 @@ class FoxBinaryReader:
                 # Multi-value attributes starts with a "|"
                 # Because they are not supported in Nemo right now they are changed to single values by concatenating the values
                 try:
-                    concatenated_values = "| "
+                    concatenated_values = "|"
 
                     #after the "|" the number of values are written in the first byte followed by the indices of the value in the value store
                     num_values = ord(temp[1])
@@ -367,10 +368,11 @@ class FoxBinaryReader:
                         index_in_value_store = ord(temp[i])
                         if (index_in_value_store < len(value_store)):
                             multiple_value = value_store[index_in_value_store]
-                            concatenated_values += multiple_value + " | "
+                            concatenated_values += multiple_value + "|"
                         else:
                             concatenated_values += f"invalid index {index_in_value_store} #={len(value_store)} | "
 
+                    # FOXProgressManager.warning(f"Attribute '{attribute_name}' has multiple values: len={len(concatenated_values)} '{concatenated_values[:500]}'") 
                     return concatenated_values
                 except Exception:
                     return temp

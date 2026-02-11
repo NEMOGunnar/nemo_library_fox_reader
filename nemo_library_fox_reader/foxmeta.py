@@ -6,6 +6,7 @@ import math
 
 from nemo_library.features.focus import focusMoveAttributeBefore
 from nemo_library_fox_reader.foxfile import FOXFile
+from nemo_library_fox_reader.foxprogressmanager import FOXProgressManager
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 from nemo_library_fox_reader.foxstatisticsinfo import IssueType
 from nemo_library_fox_reader.foxnemo_persistence_api import (
@@ -403,7 +404,7 @@ class FOXMeta:
                     containingGroupInternalName=containing_group_internal_name
                 )
                 logging.info(f"Prepared couple request: {couple_request}")
-                
+
                 self.foxReaderInfo.couple_attributes_requests.append(couple_request)
 
 
@@ -447,44 +448,32 @@ class FOXMeta:
         # iterate all attributes that have the start_attr as parent
         last_attr = None
         for attr in reversed(self.attributes):
-            if (attr != start_attr) and (
-                attr.parent_index == (start_attr.attribute_id if start_attr else None)
-            ):
+            if (attr != start_attr) and (attr.parent_index == (start_attr.attribute_id if start_attr else None)           ):
 
-
-                # # TODO: remove special handling of objects that are not supported yet
-                # if attr.attribute_type == FOXAttributeType.Link and attr.original_attribute_index is not None:
-                #     # search for the referenced attribute
-                #     referenced_attr = self._get_referenced_attribute(attr.original_attribute_index)
-                #     if referenced_attr.nemo_not_supported:
-
-                #         logging.warning(
-                #             f"Link {attr.attribute_name} references attribute {referenced_attr.attribute_name} which has an unsupported attribute type {referenced_attr.attribute_type}. Link is skipped."
-                #         )
-                #         continue
-
-                # logging.info(
-                #     f"move attribute {attr.attribute_name} (Type {attr.attribute_type}) before {last_attr.attribute_name if last_attr else 'None'} (Parent: {self._get_parent_internal_name(attr)})"
-                # )
-
-                focusMoveAttributeBefore(
-                    config=config,
-                    projectname=projectname,
-                    sourceInternalName=attr.get_nemo_name(),
-                    targetInternalName=(
-                        last_attr.get_nemo_name() if last_attr else None
-                    ),
-                    groupInternalName=self._get_parent_internal_name(attr),
-                )
-                last_attr = attr
-
-                # recursively adjust order for child attributes
-                if attr.attribute_type == FOXAttributeType.Header:
-                    logging.info(
-                        f"Recursively adjusting order for child attributes of {attr.attribute_name} (Type {attr.attribute_type})"
+                try:
+                    focusMoveAttributeBefore(
+                        config=config,
+                        projectname=projectname,
+                        sourceInternalName=attr.get_nemo_name(),
+                        targetInternalName=(
+                            last_attr.get_nemo_name() if last_attr else None
+                        ),
+                        groupInternalName=self._get_parent_internal_name(attr),
                     )
-                    self._adjust_order(
-                        config=config, projectname=projectname, start_attr=attr
+                    last_attr = attr
+
+                    # recursively adjust order for child attributes
+                    if attr.attribute_type == FOXAttributeType.Header:
+                            # logging.info(
+                            #     f"Recursively adjusting order for child attributes of {attr.attribute_name} (Type {attr.attribute_type})"
+                            # )
+                        self._adjust_order(
+                            config=config, projectname=projectname, start_attr=attr
+                        )
+
+                except Exception as e:
+                    logging.warning(
+                        f"Failed to move attribute {attr.attribute_name} before {last_attr.attribute_name if last_attr else 'end'}: {e}"
                     )
 
     def _get_fox_columns_NORMAL(self) -> list[Column]:
@@ -505,8 +494,10 @@ class FOXMeta:
                         ),
                         columnType="ExportedColumn",
                         unit=attr.nemo_unit,
+                        # stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
                     )
                 )
+                logging.info(f"Added normal column: '{attr.get_nemo_name()}' with data type '{attr.nemo_data_type}' and format '{attr.format}'")    
         return imported_columns
 
     def _get_fox_columns_HEADER(self) -> list[AttributeGroup]:
@@ -590,7 +581,11 @@ class FOXMeta:
                         #     attr.nemo_decimal_point,
                         # ) = self._detect_number_format(attr)
                         if format_clean == "####":
-                           dataType = "integer"
+                            dataType = "integer"
+                            if attr.data_is_larger_than_max_integer:
+                               dataType = "float"   
+                            else:
+                               dataType = "integer"
                         else:
                            dataType = "float"
 
@@ -617,8 +612,9 @@ class FOXMeta:
                                 focusAggregationGroupByTargetType="Column" if attribute2 else "NotApplicable",
                                 focusGroupByTargetInternalName=attribute2.get_nemo_name() if attribute2 else None,
                                 groupByColumnInternalName=attribute2.get_nemo_name() if attribute2 else None,
-                                stringSize = 0,
                                 unit=attr.nemo_unit,
+                                stringSize=0,
+                                # stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
                             )
                     columns.append(column)
                 else:
@@ -632,6 +628,7 @@ class FOXMeta:
                         ),
                         columnType="ExportedColumn",
                         unit=attr.nemo_unit,
+                        # stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
                     )
                     columns.append(column)
 
@@ -664,30 +661,8 @@ class FOXMeta:
                 if nemo_data_type == "date" or nemo_data_type == "datetime":
                    hana_data_type, hana_conversion_format = (FOXFile._convert_date_format_to_hana_date_format(None, attr))
                    if hana_data_type == "string":
+                       nemo_data_type = "string"
                        formula = f"format({formula}, '{hana_conversion_format}')"
-
-                # nemo_data_type = "string"
-
-                # try:
-                #     for i in range(attr.num_referenced_attributes):
-                #         refId = int(attr.referenced_attributes[i])
-                #         referenced_attribute = next(
-                #             (
-                #                 a
-                #                 for a in self.attributes
-                #                 if a.attribute_id == refId
-                #             ),
-                #             None,
-                #         )
-                #         if referenced_attribute:
-                #             # set the data_type of the column to the data type of the data type of the first referenced attribute
-                #             if nemo_data_type == "string":
-                #                 nemo_data_type = referenced_attribute.nemo_data_type
-
-
-                # except Exception as e:
-                #     logging.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Exception loop referenced_attributes  num_referenced_attributes={attr.num_referenced_attributes}  i={i}")
-                #     pass
 
                 if not nemo_data_type:
                     nemo_data_type = attr.nemo_data_type
@@ -703,6 +678,7 @@ class FOXMeta:
                             columnType="DefinedColumn",
                             formula=formula,
                             unit=attr.nemo_unit,
+                            # stringSize=attr.max_string_length if nemo_data_type == "string" else 0,
                         )
                 columns.append(column)
                 # logging.info(f"Expression: '{attr.attribute_name}'  format='{attr.format}' => '{nemo_data_type}'  formula='{formula}'")
@@ -734,7 +710,7 @@ class FOXMeta:
                     nemo_data_type, nemo_pandas_conversion_format = (FOXFile._detect_date_format(None, attr))
                     if nemo_data_type in ["date", "datetime"]:
                         is_link_to_date_with_date_format = True
-                        # logging.info(f"Link to date detected {attr.attribute_name} {referenced_attr.attribute_name} {nemo_data_type} {attr.format} {referenced_attr.format} {nemo_pandas_conversion_format}")
+                        logging.info(f"Link to date detected {attr.attribute_name} {referenced_attr.attribute_name} {nemo_data_type} {hana_data_type} {attr.format} {referenced_attr.format} {nemo_pandas_conversion_format} {attr.hana_conversion_format}")
 
                 if is_link_to_date_with_date_format:
                     # the attribute link references a date/datetime attribute and has a format of a part of datetime. 
@@ -744,7 +720,12 @@ class FOXMeta:
 
                     # for known formats the link attribute is replaced by an expression attribute using a formula
                     if nemo_pandas_conversion_format == "%Y":
-                        formula = f"year({referenced_attribute_link})"
+                        # formula = f"year({referenced_attribute_link})"
+                        formula = f"format({referenced_attribute_link}, 'YYYY')"
+                        nemo_data_type = "integer"
+                    if nemo_pandas_conversion_format == "%y":
+                        # formula = f"year({referenced_attribute_link})"
+                        formula = f"format({referenced_attribute_link}, 'YY')"
                         nemo_data_type = "integer"
                     if nemo_pandas_conversion_format == "%m" or nemo_pandas_conversion_format == "m":
                         formula = f"month({referenced_attribute_link})"
@@ -761,7 +742,7 @@ class FOXMeta:
                     if nemo_pandas_conversion_format == "%S":
                         formula = f"second({referenced_attribute_link})"
                         nemo_data_type = "integer"
-                    if nemo_pandas_conversion_format == "%D": #USI
+                    if nemo_pandas_conversion_format == "%D" and attr.hana_conversion_format not in ["DAY", "DY"]: #USI
                         formula = f"weekday({referenced_attribute_link})"
                         nemo_data_type = "string"
 
@@ -782,6 +763,7 @@ class FOXMeta:
                                     columnType="DefinedColumn",
                                     formula=formula,
                                     unit=attr.nemo_unit,
+                                    # stringSize=attr.max_string_length if nemo_data_type == "string" else 0,
                                 )
                         columns.append(column)
                     else:
@@ -826,6 +808,7 @@ class FOXMeta:
                         ),
                         columnType="ExportedColumn",
                         unit=attr.nemo_unit,
+                        # stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
                     )
                     columns.append(column)
                     continue
@@ -929,6 +912,7 @@ class FOXMeta:
                     columnType="DefinedColumn",
                     formula=expression_string,
                     unit=attr.nemo_unit,
+                    # stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
                 )
                 columns.append(column)
         return columns
@@ -1035,10 +1019,10 @@ class FOXMeta:
                     parentAttributeGroupInternalName=self._get_parent_internal_name(
                         attr
                     ),
-                    # columnType="ExportedColumn",
                     columnType="DefinedColumn",
                     formula=expression_string,
                     unit=attr.nemo_unit,
+                    # stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
                 )
                 columns.append(column)
 
@@ -1068,8 +1052,8 @@ class FOXMeta:
                     hana_data_type, attr.hana_conversion_format = (FOXFile._convert_date_format_to_hana_date_format(None, attr))
                     if nemo_data_type in ["date", "datetime"]:
                         # if nemo_pandas_conversion_format in ["%Y", "%y", "%m", "m", "%d", "d", "%D", "%H", "%M", "%S"]:
+                        logging.info(f"Link to date detected {attr.attribute_name} {referenced_attr.attribute_name} {nemo_data_type} {hana_data_type} {attr.format} {referenced_attr.format} {nemo_pandas_conversion_format} {attr.hana_conversion_format}")
                         is_link_to_date_with_date_format = True
-                            # logging.info(f"Link to date detected {attr.attribute_name} {referenced_attr.attribute_name} {nemo_data_type} {attr.format} {referenced_attr.format} {nemo_pandas_conversion_format}")
 
                 if not is_link_to_date_with_date_format:
 #                    logging.info(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>> Link detected {attr.attribute_name} {referenced_attr.attribute_name}")
@@ -1134,10 +1118,12 @@ class FOXMeta:
         if referenced_attribute.attribute_type == FOXAttributeType.Link and referenced_attribute.original_attribute_index is not None:
             name = referenced_attribute.attribute_name
             dataType = referenced_attribute.nemo_data_type
-            if referenced_attribute.nemo_data_type != "datetime":
+            if referenced_attribute.nemo_data_type not in ["datetime", "date"]:
+            # if referenced_attribute.nemo_data_type != "datetime":
                 referenced_attribute = self._get_referenced_attribute(referenced_attribute.original_attribute_index)
                 logging.info(f"Recursively resolving link {original_attribute_index}   from {name} to {referenced_attribute.attribute_name}  {dataType}=>{referenced_attribute.nemo_data_type}")
             else:
                 logging.info(f"Not resolving link {original_attribute_index}   from {name} to {referenced_attribute.attribute_name}  {dataType}=>{referenced_attribute.nemo_data_type}")
+
         return referenced_attribute
 

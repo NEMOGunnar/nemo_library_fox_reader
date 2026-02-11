@@ -15,11 +15,12 @@ from nemo_library_fox_reader.foxbinaryreader import FoxBinaryReader
 from nemo_library_fox_reader.foxglobal import FoxGlobal
 from nemo_library_fox_reader.foxutils import FOXAttributeType
 
+from nemo_library_fox_reader.foxprogressmanager import FOXProgressManager
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 from nemo_library_fox_reader.foxstatisticsinfo import IssueType
 
 MINIMUM_FOX_VERSION = "FOX2006/11/08"
-MAXIMUM_FOX_VERSION = "FOX2025/07/23"
+MAXIMUM_FOX_VERSION = "FOX2026/01/25"
 
 
 T = TypeVar("T")
@@ -62,9 +63,6 @@ class FOXFile:
 
         self.attributes = self._read_attributes(self.global_information)
         self.global_information = self._read_global_part_2(self.global_information)
-
-        #self._set_values_for_datetime_attributes_depending_on_format(self.attributes)
-        logging.info("Removed 2026-01-22: _set_values_for_datetime_attributes_depending_on_format(self.attributes)")
 
         self.data_frame = self._create_dataframe(
             self.global_information, self.attributes
@@ -125,7 +123,8 @@ class FOXFile:
                                 )
                                 # If you truly want pure date objects later, call .dt.date when exporting
                                 delasap1 = df[attribute_nemo_name].to_list()
-                                delasap2 = delasap1
+                                delasap2 = delasap1[:10]
+                                logging.info(f"Parsed date {attribute_nemo_name} {attr.nemo_pandas_conversion_format} = {delasap2}")  
 
                             case "datetime":
 
@@ -135,7 +134,8 @@ class FOXFile:
                                     date_only=False,
                                 )
                                 delasap1 = df[attribute_nemo_name].to_list()
-                                delasap2 = delasap1
+                                delasap2 = delasap1[:10]
+                                logging.info(f"Parsed datetime {attribute_nemo_name} {attr.nemo_pandas_conversion_format} = {delasap2}")  
 
                             case "integer" | "float":
 
@@ -167,14 +167,12 @@ class FOXFile:
                                     else "float64"
                                 )
 
-                        # if attribute_nemo_name in ["bestelldatum_4_2f1fd773_6caf_455c_b31c_2ef2245f3fc1"]:
-                        #     # for val in attr.values:
-                        #     #     if val is not None and val != "":
-                        #     #         xxx = val
-                        #     attr.nemo_data_type = "date"
+                                delasap1 = df[attribute_nemo_name].to_list()
+                                delasap2 = delasap1[:10]
+                                logging.info(f"Parsed numeric {attribute_nemo_name} {attr.nemo_data_type} = {delasap2}")  
 
                     except Exception as e:
-                        logging.warning(
+                        FOXProgressManager.warning(
                             f"Could not convert attribute '{attr.get_nemo_name()}' to type '{attr.nemo_data_type}'  format={attr.format}  nemo_pandas_conversion_format={attr.nemo_pandas_conversion_format}: {e}"
                         )
                         attr.nemo_data_type = "string"
@@ -190,34 +188,6 @@ class FOXFile:
             df = pd.DataFrame()
 
         return df
-
-
-    def _set_values_for_datetime_attributes_depending_on_format(self, attributes: list[FoxAttribute]) -> None:
-        for attr in attributes:
-            if attr.nemo_data_type == "datetime" or attr.nemo_data_type == "date":
-                if attr.nemo_pandas_conversion_format:
-                    # Convert FOX format string to pandas/strftime format
-                    pandas_format = attr.nemo_pandas_conversion_format #self._convert_fox_format_to_strftime(attr.format)
-                    has_complete_date_part = self._check_format_has_complete_date_part(pandas_format)
-                    has_complete_time_part = self._check_format_has_complete_time_part(pandas_format)
-
-                    if not has_complete_date_part and not has_complete_time_part:
-                        attr.nemo_data_type = "string"
-                        for i in range(len(attr.values)):
-                            if attr.values[i] is not None and attr.values[i] != "":
-                                # try:
-                                delasap5 = str(attr.values[i])
-                                delasap6 = delasap5
-                                #     # Convert value to datetime if not already
-                                #     if isinstance(attr.values[i], str):
-                                #         dt_value = pd.to_datetime(attr.values[i])
-                                #     else:
-                                #         dt_value = pd.to_datetime(attr.values[i])
-                                #     # Format using strftime
-                                #     attr.values[i] = dt_value.strftime(pandas_format)
-                                # except (ValueError, TypeError, AttributeError):
-                                #     # If conversion fails, keep original value
-                                #     attr.values[i] = str(attr.values[i])
 
 
     def _check_format_has_complete_date_part(self, pandas_format: str) -> bool:
@@ -322,6 +292,8 @@ class FOXFile:
         unique_thousands = [" ", "’", "'"]
 
         if attr.format == "####":
+            if attr.data_is_larger_than_max_integer:
+                return ("string", None, None)
             return ("integer", None, None)
 
         if attr.format == "####,####":
@@ -449,15 +421,17 @@ class FOXFile:
         pandas_string = pandas_string.replace("yy", "%y")
         pandas_string = pandas_string.replace("aa", "%y")
         pandas_string = pandas_string.replace("mm", "%m")
-        # pandas_string = pandas_string.replace("m", "%m") #USI
-        pandas_string = pandas_string.replace("dd", "%d")
-        # USI pandas_string = pandas_string.replace("d", "%d")
+        # pandas_string = pandas_string.replace("m", "%m") #USI doesn't work because %m is replaced as well
         pandas_string = pandas_string.replace("dddd", "%D") #USI
         pandas_string = pandas_string.replace("tttt", "%D") #USI
+        pandas_string = pandas_string.replace("ddd", "%D") #USI
+        pandas_string = pandas_string.replace("ttt", "%D") #USI
+        pandas_string = pandas_string.replace("dd", "%d")
+        # pandas_string = pandas_string.replace("d", "%d")
         pandas_string = pandas_string.replace("tt", "%d")
         pandas_string = pandas_string.replace("t", "%d")
-
-        # logging.info(f"_detect_date_format('{attr.format}') => '{pandas_string}'  {attr.attribute_name}")
+        # pandas_string = pandas_string.replace("%%d", "%d")
+        # pandas_string = pandas_string.replace("%%m", "%m")
 
         # now guess the data type
         if any(token in pandas_string for token in ["%H", "%I", "%M", "%S"]) and any(
@@ -472,6 +446,8 @@ class FOXFile:
         else:
             data_type = "string"
             pandas_string = None
+
+        logging.info(f"_detect_date_format('{attr.format}') => '{pandas_string}'  data_type='{data_type}'  {attr.attribute_name}")
 
         return (data_type, pandas_string)
 
@@ -525,11 +501,11 @@ class FOXFile:
         format_string = format_string.replace("yy", "YY")
         format_string = format_string.replace("aa", "YY")
         format_string = format_string.replace("mm", "MM")
-        format_string = format_string.replace("dddd", "D")
-        format_string = format_string.replace("ddd", "DAY")
+        format_string = format_string.replace("dddd", "DAY")
+        format_string = format_string.replace("ddd", "DY")
         format_string = format_string.replace("dd", "DD")
-        format_string = format_string.replace("tttt", "D")
-        format_string = format_string.replace("ttt", "DAY")
+        format_string = format_string.replace("tttt", "DAY")
+        format_string = format_string.replace("ttt", "DY")
         format_string = format_string.replace("tt", "DD")
         format_string = format_string.replace("t", "DD")
 
@@ -933,6 +909,8 @@ class FOXFile:
                         self.foxReaderInfo.add_issue(IssueType.COMMENT, attr.attribute_name, attr.expression_string, attr.format, extra_info=attr.comment)
 
             attr.format = reader.read_compressed_string()
+            # if attr.format == "" or attr.format is None:
+            #     attr.format = "String"  # default format
             attr.unclear_format = reader.read_int()
             attr.maximum = reader.read_double()
             attr.minimum = reader.read_double()
@@ -1014,7 +992,11 @@ class FOXFile:
                 attr.combined_format = reader.read_compressed_string()
 
             if attr.attribute_type == FOXAttributeType.Expression:
-                attr.expression_string = reader.read_compressed_string()
+                if global_information.version_short < "FOX2026/01/25":
+                    attr.expression_string = reader.read_compressed_string()
+                else:
+                    attr.expression_string = reader.read_CString()
+
                 attr.num_referenced_attributes = reader.read_int()
                 for _ in range(attr.num_referenced_attributes):
                     referencedAttribute = reader.read_CString()
@@ -1106,7 +1088,7 @@ class FOXFile:
             if attr.permanently_hidden != 0 or not attr.shown:
                 if self.foxReaderInfo:
                     if attr.permanently_hidden != 0:
-                        self.foxReaderInfo.list_of_ids_permanently_hidden_columns.append(attr.uuid)
+                        self.foxReaderInfo.list_of_ids_permanently_hidden_columns.append(attr)
                         self.foxReaderInfo.add_issue(IssueType.ATTRIBUTEPERMANENTLYHIDDEN, attr.attribute_name, "", attr.format, extra_info="")
                         logging.info(f"Attribute '{attr.attribute_name}' is permanently hidden.")
                     else:
@@ -1155,11 +1137,44 @@ class FOXFile:
                     raw_index_array, bytes_per_index
                 )
 
+                index_warning_value = 0
                 attr.values = [value_store[i] for i in index_array]
                 for i in range(len(attr.values)):
-                    if len(attr.values[i]) > 500:
-                        logging.warning(f"Value too long in attribute '{attr.attribute_name}': '{attr.values[i][:100]}...{attr.values[i][-100:]}'")
-                        attr.values[i] = attr.values[i][:500]
+                    if attr.format == "####":
+                        try:
+                            if (attr.values[i] is None) or (attr.values[i].strip() == ""):
+                                continue
+
+                            val_as_float = float(attr.values[i])
+                            if val_as_float > 2147483647 or val_as_float < -2147483648:
+                                attr.data_is_larger_than_max_integer = True
+                                # attr.nemo_data_type = "bigint"
+                                attr.nemo_data_type = "string"
+                                index_warning_value = i
+                                break
+
+                            val_as_int = int(val_as_float)
+                            attr.values[i] = str(val_as_int)
+                        except ValueError as e:
+                            pass
+
+                    if attr.format == "String" or attr.format == "":
+                        value_length = len(attr.values[i])
+                        attr.max_string_length = max(attr.max_string_length, value_length)
+                        if self.foxReaderInfo:
+                            self.foxReaderInfo.max_string_length_in_fox_file = max(self.foxReaderInfo.max_string_length_in_fox_file, value_length)
+                            if (self.foxReaderInfo.max_string_length_in_fox_file > 500):
+                                index_warning_value = i
+                                # self.foxReaderInfo.add_issue(IssueType.VALUETOOLONG, attr.attribute_name, "", attr.format, extra_info=f"Max string length={self.foxReaderInfo.max_string_length_in_fox_file} ... {attr.values[i][:100]}...{attr.values[i][-100:]}")
+                                # FOXProgressManager.warning(f"Value too long in attribute '{attr.attribute_name}': len={value_length} '{attr.values[i][:100]}'")
+                        attr.values[i] = attr.values[i][:100]
+
+                if attr.data_is_larger_than_max_integer:
+                    FOXProgressManager.warning(f"Value in attribute '{attr.attribute_name}' is larger than max integer: '{attr.values[index_warning_value]}' -> treating as {attr.nemo_data_type}") 
+
+                if attr.max_string_length > 500:
+                    self.foxReaderInfo.add_issue(IssueType.VALUETOOLONG, attr.attribute_name, "", attr.format, extra_info=f"Max string length={self.foxReaderInfo.max_string_length_in_fox_file} ... {attr.values[index_warning_value][:100]}...{attr.values[index_warning_value][-100:]}")
+                    FOXProgressManager.warning(f"Value too long in attribute '{attr.attribute_name}': len={attr.max_string_length}   '{attr.values[index_warning_value][:50]}...{attr.values[index_warning_value][-100:]}'")
 
                 attr.value_frequency_coloring = reader.read_bool()
                 if attr.value_frequency_coloring:
@@ -1238,7 +1253,7 @@ class FOXFile:
 
                 if self.foxReaderInfo is not None and len(attributes_in_coupled_group) > 1:
                     self.foxReaderInfo.coupled_attributes_in_fox_file.append(attributes_in_coupled_group)
-                    logging.info(f"Coupled attribute group: {[a for a in attributes_in_coupled_group]}, last_attribute_leads={last_attribute_leads}, sorted_reverse={sorted_reverse}")
+                    # logging.info(f"Coupled attribute group: {[a.get_nemo_name() for a in attributes_in_coupled_group]}, last_attribute_leads={last_attribute_leads}, sorted_reverse={sorted_reverse}")
 
         # ignore id of attribute and overwrite it with the index
         for idx, attr in enumerate(attributes):

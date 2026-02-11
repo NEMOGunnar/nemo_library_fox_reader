@@ -48,8 +48,24 @@ statistics_only = False
 ##nl.ReUploadFile(projectname="FOX USI 90 Autos",filename="fox_files/Autos.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 98 Autos (Coupled Group)",filename="fox_files/Autos (Coupled Group).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 95 PDH_PROD_PMCC_Extract 1",filename="fox_files/PDH_PROD_PMCC_Extract 1.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
-##nl.ReUploadFile(projectname="FOX USI 83 Northwind (DateTime)",filename="fox_files/Nordwind (Reduced 3).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 74 Northwind (DateTime)",filename="fox_files/Nordwind (DateTime).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 99 Bereinigen von Telefonnummernadresse",filename="fox_files/Demodaten/CeBit 2014/Bereinigen von Tel/Optimiert_Bereinigen von Telefonnummernadresse.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
-##nl.ReUploadFile(projectname="FOX USI 41 Nordwind (CeBit 2014)",filename="fox_files/Nordwind.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
-nl.ReUploadFile(projectname="FOX USI 77 PDH_PROD_PMCC_Global_Attributes_incl_SAP_2025-11-testing-nemo.01",filename="fox_files/PDH_PROD_PMCC_Global_Attributes_incl_SAP_2025-11-testing-nemo.01.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
-##nl.ReUploadFile(projectname="FOX USI 92 PDH_PROD_PMCC_DQChecks_Reduced 7b",filename="fox_files/PDH_PROD_PMCC_DQChecks_Reduced 7b.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 39 Nordwind (CeBit 2014)",filename="fox_files/Nordwind.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 90 PDH_PROD_PMCC_DQChecks_Reduced 7b",filename="fox_files/PDH_PROD_PMCC_DQChecks_Reduced 7b.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 90 PDH_PROD_PMCC_Description_reduced",filename="fox_files/PDH_PROD_PMCC_Description_Reduced.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 85 PDH_PROD_PMCC_Description_reduced 5 (GTIN-EndUse)",filename="fox_files/PDH_PROD_PMCC_Description_Reduced 5 (GTIN-EndUse).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 72 PDH_PROD_PMCC_Description_reduced 5g (EAN)",filename="fox_files/PDH_PROD_PMCC_Description_Reduced 5g (EAN).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 71 PDH_PROD_PMCC_Description_Reduced 5j (-EndUse Application)",filename="fox_files/PDH_PROD_PMCC_Description_Reduced 5j (-EndUse Application).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 98 PDH_PROD_PMCC_Makelist",filename="fox_files/PDH_PROD_PMCC_Makelist.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 99 Nordwind Umsatz pro Jahr",filename="fox_files/Nordwind.Umsatz pro Jahr.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 92 Nordwind (Umsatz+Geburtstag)",filename="fox_files/Nordwind (Umsatz+Geburtstag).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+nl.ReUploadFile(projectname="FOX USI 50 PDH_PROD_PMCC_Global_Attributes_incl_SAP_2025-11-testing-nemo.01",filename="fox_files/PDH_PROD_PMCC_Global_Attributes_incl_SAP_2025-11-testing-nemo.01.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 93 PDH_PROD_PMCC_Reduced (MaxInt+TooLong)",filename="fox_files/PDH_PROD_PMCC_Reduced (MaxInt+TooLong).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 99 PDH_PROD_PMCC_Reduced (TooLong)",filename="fox_files/PDH_PROD_PMCC_Reduced (TooLong).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 95 PDH_PROD_PMCC_Reduced (TooLong Without Makelist)",filename="fox_files/PDH_PROD_PMCC_Reduced (TooLong Without Makelist).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 99 PDH_PROD_PMCC_Reduced (MaxInt)",filename="fox_files/PDH_PROD_PMCC_Reduced (MaxInt).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 98 PDH_PROD_PMCC_Reduced (CATALOG_NUMBER)",filename="fox_files/PDH_PROD_PMCC_Reduced (CATALOG_NUMBER).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+
+
+
+#python fox_one_file_import.py

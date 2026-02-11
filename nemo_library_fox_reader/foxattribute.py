@@ -141,6 +141,9 @@ class FoxAttribute:
     hana_conversion_format: str = ""
     nemo_unit: str = ""
     nemo_not_supported: bool = False
+    max_string_length: int = 0
+    data_is_larger_than_max_integer: bool = False
+
 
     def to_dict(self):
         """

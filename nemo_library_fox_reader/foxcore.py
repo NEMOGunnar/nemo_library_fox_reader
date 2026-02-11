@@ -102,6 +102,7 @@ from nemo_library.features.projects import (
 from nemo_library.utils.migmanutils import get_migman_project_list
 from nemo_library.utils.utils import FilterType, FilterValue
 from nemo_library.version import __version__
+from nemo_library_fox_reader.foxprogressmanager import FOXProgressManager
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 
 from deprecated import deprecated
@@ -488,6 +489,8 @@ class FoxNemoLibrary:
         """
 
         # logging.info(f"ReUploadFile(core.py) statistics_only={statistics_only}")
+        FOXProgressManager.info(f"Uploading file {filename} to project {projectname}")
+
 
         ReUploadFile(
             self.config,
