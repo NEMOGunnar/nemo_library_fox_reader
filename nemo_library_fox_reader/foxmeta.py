@@ -75,6 +75,12 @@ class FOXMeta:
       ##  logging.info("Setting parent relationships for FOX attributes...")
         self._set_parent_relationships()
 
+        for attr in self.attributes:
+            if attr.nemo_data_type == "string" and attr.max_string_length > 0:
+                 ln2 = int(math.log(attr.max_string_length) / math.log(2))
+                 pow2length = 2 ** (ln2 + 1)
+                 attr.max_string_length =  max(attr.max_string_length + 1, pow2length) # we add 1 to the max string length to avoid issues with truncation in NEMO. This is a workaround and should be properly handled in the future when we have better support for string attributes in NEMO.
+
         # read meatadata from FOX file
         # sequence is important here, because we do not support all attribute types and formuale yet
         # during the processing, we will log unsupported attribute types
@@ -408,33 +414,6 @@ class FOXMeta:
                 self.foxReaderInfo.couple_attributes_requests.append(couple_request)
 
 
-
-
-
-        # attribute_ids = []
-        # previous_element_id = None
-        # last_attribute_is_coupled = False
-        # containing_group_internal_name = None
-        # for attr in attributes:
-        #     if attr.coupled and attr.attribute_type != FOXAttributeType.Header:
-        #         if not last_attribute_is_coupled:
-        #             containing_group_internal_name = self._get_parent_internal_name(attr)
-        #         attribute_ids.append(attr.get_nemo_name())
-                
-        #     else:   
-        #         if last_attribute_is_coupled and attribute_ids:
-        #             couple_request = CoupleAttributesRequest(
-        #                 attributeIds=attribute_ids,
-        #                 previousElementId=previous_element_id,
-        #                 containingGroupInternalName=containing_group_internal_name
-        #             )
-        #             if self.foxReaderInfo:
-        #                 self.foxReaderInfo.couple_attributes_requests.append(couple_request)
-        #             attribute_ids = []
-        #         previous_element_id = attr.get_nemo_name()
-        #     last_attribute_is_coupled = attr.coupled and attr.attribute_type != FOXAttributeType.Header
-
-
     def _adjust_order(
         self,
         config: Config,
@@ -494,7 +473,7 @@ class FOXMeta:
                         ),
                         columnType="ExportedColumn",
                         unit=attr.nemo_unit,
-                        # stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
+                        stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
                     )
                 )
                 logging.info(f"Added normal column: '{attr.get_nemo_name()}' with data type '{attr.nemo_data_type}' and format '{attr.format}'")    
@@ -613,8 +592,8 @@ class FOXMeta:
                                 focusGroupByTargetInternalName=attribute2.get_nemo_name() if attribute2 else None,
                                 groupByColumnInternalName=attribute2.get_nemo_name() if attribute2 else None,
                                 unit=attr.nemo_unit,
-                                stringSize=0,
-                                # stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
+                                # stringSize=1000,
+                                stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
                             )
                     columns.append(column)
                 else:
@@ -628,7 +607,8 @@ class FOXMeta:
                         ),
                         columnType="ExportedColumn",
                         unit=attr.nemo_unit,
-                        # stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
+                        #stringSize=1000,
+                        stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
                     )
                     columns.append(column)
 
@@ -678,7 +658,8 @@ class FOXMeta:
                             columnType="DefinedColumn",
                             formula=formula,
                             unit=attr.nemo_unit,
-                            # stringSize=attr.max_string_length if nemo_data_type == "string" else 0,
+                            # stringSize=1000,
+                            stringSize=attr.max_string_length if nemo_data_type == "string" else 0,
                         )
                 columns.append(column)
                 # logging.info(f"Expression: '{attr.attribute_name}'  format='{attr.format}' => '{nemo_data_type}'  formula='{formula}'")
@@ -763,7 +744,8 @@ class FOXMeta:
                                     columnType="DefinedColumn",
                                     formula=formula,
                                     unit=attr.nemo_unit,
-                                    # stringSize=attr.max_string_length if nemo_data_type == "string" else 0,
+                                    # stringSize=1000,
+                                    stringSize=attr.max_string_length if nemo_data_type == "string" else 0,
                                 )
                         columns.append(column)
                     else:
@@ -777,6 +759,7 @@ class FOXMeta:
                             ),
                             columnType="ExportedColumn",
                             unit=attr.nemo_unit,
+                            stringSize=attr.max_string_length if nemo_data_type == "string" else 0,
                         )
                         columns.append(column)
                         logging.info(f"Unsupported format: {attr.attribute_name}, {attr.expression_string}, {attr.format}")
@@ -808,7 +791,8 @@ class FOXMeta:
                         ),
                         columnType="ExportedColumn",
                         unit=attr.nemo_unit,
-                        # stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
+                        # stringSize=1000,
+                        stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
                     )
                     columns.append(column)
                     continue
@@ -862,10 +846,14 @@ class FOXMeta:
                         cond = f"({colname} < {threshold})"
                     elif op == 2:  # OPERATOR_EQUAL
                         # use numeric threshold if available, otherwise compare to s_threshold
-                        try:
-                            float(threshold)
-                            cond = f"({colname} == {threshold})"
-                        except Exception:
+                        threshold_is_available = threshold is not None and not math.isnan(threshold)
+                        if threshold_is_available:
+                            try:
+                                float(threshold)
+                                cond = f"({colname} == {threshold})"
+                            except Exception:
+                                threshold_is_available = False
+                        if not threshold_is_available:
                             cond = f"({colname} == {_quote_if_needed_for_formula(s_threshold)})"
                     elif op == 3:  # OPERATOR_IN
                         # build OR of equality checks
@@ -912,7 +900,8 @@ class FOXMeta:
                     columnType="DefinedColumn",
                     formula=expression_string,
                     unit=attr.nemo_unit,
-                    # stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
+                    # stringSize=1000,
+                    stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
                 )
                 columns.append(column)
         return columns
@@ -1022,7 +1011,7 @@ class FOXMeta:
                     columnType="DefinedColumn",
                     formula=expression_string,
                     unit=attr.nemo_unit,
-                    # stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
+                    stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
                 )
                 columns.append(column)
 

@@ -139,7 +139,7 @@ def ReUploadDataFrame(
             encoding="UTF-8",
             doublequote=False,
         )
-        logging.info(f"file {temp_file_path} written. Number of records: {len(df)}")
+        FOXProgressManager.info(f"file {temp_file_path} written. Number of records: {len(df)}")
 
         ReUploadFile(
             config=config,

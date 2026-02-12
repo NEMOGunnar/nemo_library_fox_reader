@@ -1167,7 +1167,7 @@ class FOXFile:
                                 index_warning_value = i
                                 # self.foxReaderInfo.add_issue(IssueType.VALUETOOLONG, attr.attribute_name, "", attr.format, extra_info=f"Max string length={self.foxReaderInfo.max_string_length_in_fox_file} ... {attr.values[i][:100]}...{attr.values[i][-100:]}")
                                 # FOXProgressManager.warning(f"Value too long in attribute '{attr.attribute_name}': len={value_length} '{attr.values[i][:100]}'")
-                        attr.values[i] = attr.values[i][:100]
+                        # attr.values[i] = attr.values[i][:100]
 
                 if attr.data_is_larger_than_max_integer:
                     FOXProgressManager.warning(f"Value in attribute '{attr.attribute_name}' is larger than max integer: '{attr.values[index_warning_value]}' -> treating as {attr.nemo_data_type}") 

@@ -197,6 +197,9 @@ class FoxFormulaConverter:
                 token = token.upper()
 
             formula_part = formula_part + f"{token}"
+
+            self.attr.attribute_name = f"<{token}> {self.attr.attribute_name}" #delasap
+
             if not without_paratheses:
                 formula_part = formula_part + ' ('
 
@@ -332,61 +335,6 @@ class FoxFormulaConverter:
             logging.warning(f"Exception FoxFormulaConverter.match_varref: {e}")
 
         return formula_part
-
-
-    # def convert_expression(self, tree: Tree):
-    #     logging.info(f"convert_expression  data={tree.data}")
-
-    #     if tree.data == "if_expr":
-    #         yield f' IF '
-    #     if tree.data == "eq":
-    #         yield f' == '
-    #     if tree.data == "varref":
-    #         referenced_attribute = self.get_referenced_attribute(3)
-    #         if referenced_attribute:
-    #             yield f"({referenced_attribute.get_nemo_name()})"
-    #         else:
-    #             yield f' Attribute with ID={id} not found '
-
-    #     if len(tree.children) == 1 and not isinstance(tree.children[0], Tree):
-    #         first_child = tree.children[0]
-    #         yield f'\t{first_child}\n'
-    #     else:
-    #         # yield '\n'
-    #         for child in tree.children:
-    #             if isinstance(child, Tree):
-    #                 yield from tree.convert_expression(child)
-    #             else:
-    #                 yield f'{child}\n'
-
-
-    # def _pretty_label(self):
-    #     return self.data
-
-    # def _pretty(self, level, indent_str):
-    #     yield f'{indent_str*level}{self._pretty_label()}'
-    #     if len(self.children) == 1 and not isinstance(self.children[0], Tree):
-    #         yield f'\t{self.children[0]}\n'
-    #     else:
-    #         yield '\n'
-    #         for n in self.children:
-    #             if isinstance(n, Tree):
-    #                 yield from n._pretty(level+1, indent_str)
-    #             else:
-    #                 yield f'{indent_str*(level+1)}{n}\n'
-
-
-    # def _pretty(self, tree: Tree):
-    #     yield f'{tree.data}'
-    #     if len(tree.children) == 1 and not isinstance(tree.children[0], Tree):
-    #         yield f'\t{tree.children[0]}\n'
-    #     else:
-    #         yield '\n'
-    #         for child in tree.children:
-    #             if isinstance(child, Tree):
-    #                 yield from tree._pretty(child)
-    #             else:
-    #                 yield f'{child}\n'
 
 
     def get_token(self, token: str) -> int:
