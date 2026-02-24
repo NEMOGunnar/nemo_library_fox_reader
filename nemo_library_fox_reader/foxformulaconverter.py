@@ -6,6 +6,7 @@ from nemo_library_fox_reader.foxattribute import FoxAttribute
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 from nemo_library_fox_reader.foxstatisticsinfo import IssueType
 from nemo_library_fox_reader.foxutils import FOXAttributeType
+from nemo_library_fox_reader.foxprogressmanager import FOXProgressManager
 
 
 class FoxFormulaConverter:
@@ -13,11 +14,11 @@ class FoxFormulaConverter:
     class for converting formulas and expressions from InfoZoom syntax to Nemo syntax.
     """
 
-    def __init__(self, attr: FoxAttribute, all_attributes: list[FoxAttribute], foxReaderInfo: FOXReaderInfo):
+    def __init__(self, attr: FoxAttribute, all_attributes: list[FoxAttribute], foxReaderInfo: FOXReaderInfo, use_direct_index_for_referenced_attribute: bool):
         self.attr = attr
         self.all_attributes = all_attributes
         self.foxReaderInfo = foxReaderInfo
-
+        self.use_direct_index_for_referenced_attribute = use_direct_index_for_referenced_attribute
 
     def get_nemo_formula_from_infozoom_expression(self, expression: str) -> str:
         """
@@ -120,10 +121,10 @@ class FoxFormulaConverter:
                 value_str = self.get_token(tree.children[0])
                 if value_str == '""' or len(value_str) == 0:
                     value_str = "'NULL'"
-                if value_str == '"yes"' or value_str == "'yes'":
-                    value_str = "'true'"
-                if value_str == '"no"' or value_str == "'no'":
-                    value_str = "'false'"
+                # if value_str == '"yes"' or value_str == "'yes'":
+                #     value_str = "'true'"
+                # if value_str == '"no"' or value_str == "'no'":
+                #     value_str = "'false'"
                 formula_part = formula_part + f'{value_str}'
                 self.last_used_string_token = value_str
                 # logging.info(f"inspect_tree  <<string>> value_str={value_str}")
@@ -143,8 +144,8 @@ class FoxFormulaConverter:
                 self.last_used_string_token = value_str
                 
             case _:
-                logging.info(f"inspect_tree  UNKNOWN TOKEN={tree.data}")
-                raise ValueError(f"FoxFormulaConverter inspect_tree  UNKNOWN TOKEN={tree.data}")
+                FOXProgressManager.warning(f"inspect_tree  UNKNOWN TOKEN={tree.data}")
+                # raise ValueError(f"FoxFormulaConverter inspect_tree  UNKNOWN TOKEN={tree.data}")
 
         return formula_part
 
@@ -157,10 +158,12 @@ class FoxFormulaConverter:
             formula_part = formula_part + ' , '
             formula_part = self.inspect_tree(tree.children[2], formula_part)
             formula_part = formula_part + ") "
+#If(Contains("|ZETO|ZMAT|FERT|",[Material type]),[X-plant matl status] + "/" + [X-distr.chain status],"Not ZETO, FERT or ZMAT")
+#IF (contains ("|ZETO|ZMAT|FERT|",material_type),x_plant_matl_status + "/" + x_distr_chain_status , "Not ZETO, FERT or ZMAT")
              # logging.info(f"inspect_tree  <<IF>> left={formula_part}")
 
         except Exception as e:
-            logging.warning(f"Exception FoxFormulaConverter.match_if_expr: {e}")
+            FOXProgressManager.warning(f"Exception FoxFormulaConverter.match_if_expr: {e}")
 
         return formula_part
 
@@ -171,7 +174,7 @@ class FoxFormulaConverter:
             formula_part = formula_part + ")"
 
         except Exception as e:
-            logging.warning(f"Exception FoxFormulaConverter.match_if_expr: {e}")
+            FOXProgressManager.warning(f"Exception FoxFormulaConverter.match_paren_expr: {e}")
 
         return formula_part
 
@@ -185,29 +188,39 @@ class FoxFormulaConverter:
                 token = "regex_replace"
             if token == "matches":
                 token = "regex_matches"
-            if token == "concatenate":
-                token = "concate"
+            if token == "concatenate" or token == "concate":
+                token = "concat"
             if token == "len":
                 token = "length"
 
-            # logging.info(f"Function call: '{delasap}'=>'{token}'")
-    
             without_paratheses = token in ["today","now"]
             if without_paratheses:  
                 token = token.upper()
 
             formula_part = formula_part + f"{token}"
 
-            self.attr.attribute_name = f"<{token}> {self.attr.attribute_name}" #delasap
+            if self.foxReaderInfo.operation_mode_functioncall_names_as_attribute_name_prefix:
+                self.attr.attribute_name = f"<{token}> {self.attr.attribute_name}" #delasap
 
             if not without_paratheses:
                 formula_part = formula_part + ' ('
 
-            if tree.children[1]:
-                child_args = tree.children[1].children[0]
-                # formula_delasap = self.inspect_tree(child_args, formula_part)
+            args_tree = tree.children[1]
+            if args_tree:
+                child_args = args_tree.children[0]
 
-                formula_part = self.inspect_tree(tree.children[1], formula_part)
+                if token == "regex_matches" and len(args_tree.children) > 2:
+                    tree_part = args_tree.children[2]
+                    tree_without_third_parameter = Tree(data=args_tree.data, children=[args_tree.children[0], args_tree.children[1]])
+                    formula_part = self.inspect_tree(tree_without_third_parameter, formula_part)
+                    FOXProgressManager.warning(f"HACK implemented for fumction regex_matches ignoring third parameter in attribute '{self.attr.attribute_name}'")
+                elif token == "regex_replace" and len(args_tree.children) > 3:
+                    tree_part = args_tree.children[2]
+                    tree_without_last_parameters = Tree(data=args_tree.data, children=[args_tree.children[0], args_tree.children[1], args_tree.children[2]])
+                    formula_part = self.inspect_tree(tree_without_last_parameters, formula_part)
+                    FOXProgressManager.warning(f"HACK implemented for fumction regex_replace ignoring last two parameters in attribute '{self.attr.attribute_name}'")
+                else:                    
+                    formula_part = self.inspect_tree(tree.children[1], formula_part)
 
                 # # child_args can be a Tree (with .children) or a plain list/tuple or
                 # # even a single node. Normalize to an iterable list of argument nodes
@@ -228,8 +241,8 @@ class FoxFormulaConverter:
             if not without_paratheses:
                 formula_part = formula_part + ') '
 
-            if token == "contains":
-                formula_part = f"{formula_part} == 'True'"
+            # if token == "contains":
+            #     formula_part = f"{formula_part} == 'True'"
 
             if self.foxReaderInfo:
                 self.foxReaderInfo.add_issue(IssueType.FUNCTIONCALL, self.attr.attribute_name, None, self.attr.format, extra_info=token)
@@ -237,7 +250,7 @@ class FoxFormulaConverter:
             #logging.info(f"inspect_tree  <<FUNCTION>> {tree.data} left={formula_part}")
 
         except Exception as e:
-            logging.warning(f"Exception FoxFormulaConverter.match_function: {e}")
+            FOXProgressManager.warning(f"Exception FoxFormulaConverter.match_function: {e}")
 
         return formula_part
 
@@ -258,7 +271,7 @@ class FoxFormulaConverter:
             # formula_part = self.inspect_tree(tree.children[0], formula_part)
 
         except Exception as e:
-            logging.warning(f"Exception FoxFormulaConverter.match_args: {e}")
+            FOXProgressManager.warning(f"Exception FoxFormulaConverter.match_args: {e}")
 
         return formula_part
 
@@ -269,7 +282,8 @@ class FoxFormulaConverter:
             formula_part = self.inspect_tree(tree.children[1], formula_part)
 
         except Exception as e:
-            logging.warning(f"Exception FoxFormulaConverter.match_eq: {e}")
+            FOXProgressManager.warning(f"Exception FoxFormulaConverter.match_comparison: {e}")
+
         return formula_part
     
     def match_factor(self, tree: Tree, factor: str, formula_part: str) -> str:
@@ -287,17 +301,23 @@ class FoxFormulaConverter:
 
 
         except Exception as e:
-            logging.warning(f"Exception FoxFormulaConverter.match_factor: {e}")
+            FOXProgressManager.warning(f"Exception FoxFormulaConverter.match_factor: {e}")
+
         return formula_part
     
     def match_neg(self, tree: Tree, formula_part: str) -> str:
         try:
-            formula_part = self.inspect_tree(tree.children[0], formula_part)
-            formula_part = formula_part + ' -'
-            formula_part = self.inspect_tree(tree.children[1], formula_part)
- 
+            if len(tree.children) < 2:
+                formula_part = formula_part + '-'
+                formula_part = self.inspect_tree(tree.children[0], formula_part)
+            else:
+                formula_part = self.inspect_tree(tree.children[0], formula_part)
+                formula_part = formula_part + ' -'
+                formula_part = self.inspect_tree(tree.children[1], formula_part)
+    
         except Exception as e:
-            logging.warning(f"Exception FoxFormulaConverter.match_neg: {e}")
+            FOXProgressManager.warning(f"Exception FoxFormulaConverter.match_neg: {e}")
+
         return formula_part
     
     def match_and_op(self, tree: Tree, formula_part: str) -> str:
@@ -307,7 +327,8 @@ class FoxFormulaConverter:
             formula_part = self.inspect_tree(tree.children[1], formula_part)
  
         except Exception as e:
-            logging.warning(f"Exception FoxFormulaConverter.match_and_op: {e}")
+            FOXProgressManager.warning(f"Exception FoxFormulaConverter.match_and_op: {e}")
+
         return formula_part
     
     def match_or_op(self, tree: Tree, formula_part: str) -> str:
@@ -317,7 +338,7 @@ class FoxFormulaConverter:
             formula_part = self.inspect_tree(tree.children[1], formula_part)
 
         except Exception as e:
-            logging.warning(f"Exception FoxFormulaConverter.match_or_op: {e}")
+            FOXProgressManager.warning(f"Exception FoxFormulaConverter.match_or_op: {e}")
         return formula_part
     
     def match_varref(self, tree: Tree, formula_part: str) -> str:
@@ -325,14 +346,18 @@ class FoxFormulaConverter:
             id_token = int(self.get_token(tree.children[0]))
             # logging.info(f"inspect_tree  <<VAR>> id_token={id_token}")
 
-            referenced_attribute = self.get_referenced_attribute(id_token)
+            if self.use_direct_index_for_referenced_attribute:
+                referenced_attribute = self.all_attributes[id_token] if id_token < len(self.all_attributes) else None
+            else:
+                referenced_attribute = self.get_referenced_attribute(id_token)
+
             if referenced_attribute:
                 formula_part = formula_part + f"{referenced_attribute.get_nemo_name()}"
             else:
-                formula_part = formula_part + f' Attribute with ID={id} not found '
+                formula_part = formula_part + f' Attribute with ID={id_token} not found '
 
         except Exception as e:
-            logging.warning(f"Exception FoxFormulaConverter.match_varref: {e}")
+            FOXProgressManager.warning(f"Exception FoxFormulaConverter.match_varref: {e}  id={id_token}")
 
         return formula_part
 

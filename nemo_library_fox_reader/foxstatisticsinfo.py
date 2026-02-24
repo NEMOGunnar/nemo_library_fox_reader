@@ -61,4 +61,4 @@ class IssueType(Enum):
     COLUMNWIDTHUSED = "column_width_used"
     AMPELCOLORCODING = "ampel_color_coding"
     VALUETOOLONG = "value_too_long"
-    
+    PASSWORDPROTECTED = "password_protected"

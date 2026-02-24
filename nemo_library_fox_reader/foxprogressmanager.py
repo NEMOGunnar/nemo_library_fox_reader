@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 from nemo_library_fox_reader.foxstatisticsinfo import FOXStatisticsInfo, IssueType
 
@@ -19,19 +20,19 @@ class FOXProgressManager:
         logging.warning(message)
         FOXProgressManager.allWarnings.append(message)
         
+    @staticmethod
+    def start():
+        FOXProgressManager.start_time = datetime.now().replace(microsecond=0)
+        
+    @staticmethod
+    def finish():
+        FOXProgressManager.finish_time = datetime.now().replace(microsecond=0)
+        duration = FOXProgressManager.finish_time - FOXProgressManager.start_time
+        logging.info(f"FileIngestion took {duration}   start={FOXProgressManager.start_time}   finish={FOXProgressManager.finish_time}  ")
+        
 
     allInfos: list[str] = []
     allWarnings: list[str] = []
+    start_time: datetime = None 
+    finish_time: datetime = None
 
-
-    # def start(self, total_steps: int):
-    #     self.total_steps = total_steps
-    #     self.current_step = 0
-    #     logging.info(f"Progress started: 0/{self.total_steps}")
-
-    # def step(self):
-    #     self.current_step += 1
-    #     logging.info(f"Progress: {self.current_step}/{self.total_steps}")
-
-    # def finish(self):
-    #     logging.info("Progress finished.")

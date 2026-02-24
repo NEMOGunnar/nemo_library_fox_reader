@@ -162,6 +162,7 @@ def ReUploadDataFrame(
             logging.warning(message)
         for message in FOXProgressManager.allInfos:
             logging.info(message)
+        FOXProgressManager.finish()
 
 
 
@@ -234,14 +235,13 @@ def ReUploadFile(
                     # pass
                 
                 df = foxfile.read()
-                # print("B rows =", len(df))
-                # print("B cols  =", df.shape[1])
-                # print("B shape =", df.shape)
-                # print("B columns =", df.columns.tolist())
-                # print(df.head())
 
-                meta = FOXMeta(foxfile, foxReaderInfo=foxReaderInfo)
-                meta.reconcile_metadata(config=config, projectname=projectname, statistics_only=statistics_only)
+                if df is not None:
+                    meta = FOXMeta(foxfile, foxReaderInfo=foxReaderInfo)
+                    meta.reconcile_metadata(config=config, projectname=projectname, statistics_only=statistics_only)
+                else:
+                    return
+                    
             finally:
                 foxfile.close()
         else:
@@ -461,8 +461,9 @@ def ReUploadFile(
                         f"Data ingestion request failed, task ID not found in tasks list"
                     )
                 status = df_filtered["status"].iloc[0]
-                logging.info(f"Status: {status}")
+                logging.info(f"Status of ingestion: {status}")
                 if status == "failed":
+                    FOXProgressManager.warning("Data ingestion request failed, status: FAILED")
                     log_error("Data ingestion request failed, status: FAILED")
                 if status == "finished":
                     if version == 2:
@@ -549,14 +550,17 @@ def delete_duplicate_columns_generated_by_nemo(config: Config, projectname: str)
             if col.columnType == "ExportedColumn":
                 col_duplicate = next((c for c in cols if c.importName == col.importName and c.id != col.id), None)
                 if col_duplicate is not None:
-                    logging.info(f"Duplicate defined column found '{col_duplicate.internalName}'   {col.internalName}  id={col.id}")
+                    logging.info(f"Duplicate defined column found ' id={col.id} id={col_duplicate.id}  {col_duplicate.internalName}'   {col.internalName} ")
                     columns_to_delete.append(col.id)
 
         deleteColumns(config, columns_to_delete)
 
-        logging.info(f"Delete duplicate columns successful")
+        if len(columns_to_delete) > 0:
+            logging.info(f"Delete duplicate columns successful")
+        else:
+            logging.info(f"No duplicate columns found to delete")
     except Exception as e:
-        logging.warning(f"Failed to delete duplicate columns: \n{e}")
+        FOXProgressManager.warning(f"Failed to delete duplicate columns: \n{e}")
         pass
 
 def delete_permanently_hidden_columns(config: Config, projectname: str, foxReaderInfo: FOXReaderInfo | None = None) -> None:
@@ -575,7 +579,7 @@ def delete_permanently_hidden_columns(config: Config, projectname: str, foxReade
                 logging.info(f"Delete permanently hidden columns successful")
 
     except Exception as e:
-        logging.warning(f"Failed to delete permanently hidden columns: \n{e}")
+        FOXProgressManager.warning(f"Failed to delete permanently hidden columns: \n{e}")
         pass
 
 
@@ -611,7 +615,7 @@ def update_defined_columns(config: Config, projectname: str) -> None:
                 #     )
                 # logging.info(f"Defined column '{col.displayName}' updated successfully.")
     except Exception as e:
-        logging.warning(f"Failed to update defined columns: {e}")
+        FOXProgressManager.warning(f"Failed to update defined columns: {e}")
         pass
 
 
@@ -631,7 +635,7 @@ def couple_attributes(config: Config, projectname: str, foxReaderInfo: FOXReader
                 logging.info(f"Coupling attributes successful")
 
     except Exception as e:
-        logging.warning(f"Failed to couple attributes:: {e}")
+        FOXProgressManager.warning(f"Failed to couple attributes:: {e}")
         pass
 
 def _get_file_size(filepath: str):

@@ -96,6 +96,25 @@ class FOXMeta:
         # attributegroups_fox = self._get_fox_columns_HEADER()
         attributelinks_fox = self._get_fox_columns_LINK()
 
+        dictionary_object_to_create_to_endpoint = [] #:dict[object, str] = {}
+        for attr, i in zip(self.attributes, range(len(self.attributes))):
+            attr_nemo_name = attr.get_nemo_name()
+
+            object_to_create = next((col for col in columns_fox if col.internalName == attr_nemo_name), None)
+            if object_to_create is not None:
+                object_to_create.order = f"{i + 1}"
+                dictionary_object_to_create_to_endpoint.append((object_to_create, "Columns"))
+            else:
+                object_to_create = next((col for col in attributegroups_fox if col.internalName == attr_nemo_name), None)
+                if object_to_create is not None:
+                    object_to_create.order = f"{i + 1}"
+                    dictionary_object_to_create_to_endpoint.append((object_to_create, "AttributeGroups"))
+                else:
+                    object_to_create = next((col for col in attributelinks_fox if col.internalName == attr_nemo_name), None)
+                    if object_to_create is not None:
+                        object_to_create.order = f"{i + 1}"
+                        dictionary_object_to_create_to_endpoint.append((object_to_create, "AttributeLinks"))
+            
         if self.foxReaderInfo:
             self.foxReaderInfo.dictionary_internal_names_to_data_types = {}
             for col in columns_fox:
@@ -125,22 +144,6 @@ class FOXMeta:
                     )
                 ],
             )
-
-        # split columns in ExportedColumns and DefindedColumns
-        exported_columns_fox = [col for col in columns_fox if col.columnType == "ExportedColumn"]
-        defined_columns_fox = [col for col in columns_fox if col.columnType == "DefinedColumn"]
-        other_columns_fox = [col for col in columns_fox if (col.columnType != "DefinedColumn" and col.columnType != "ExportedColumn")]
-
-        # for c in attributegroups_fox:
-        #     logging.info(f"Group: '{c.internalName}' {c.attributeGroupType}  '{c.parentAttributeGroupInternalName}'")
-        # for c in attributelinks_fox:
-        #     logging.info(f"Link: '{c.internalName}' source='{c.sourceAttributeInternalName}'  '{c.parentAttributeGroupInternalName}'")
-        # for c in exported_columns_fox:
-        #     logging.info(f"Exported: '{c.internalName}'  '{c.parentAttributeGroupInternalName}'  {c.dataType}")
-        # for c in defined_columns_fox:
-        #     logging.info(f"Defined: '{c.internalName}'  '{c.parentAttributeGroupInternalName}'  {c.dataType}")
-        # for c in other_columns_fox:
-        #     logging.info(f"Other: '{c.internalName}' {c.columnType}  '{c.parentAttributeGroupInternalName}'  {c.dataType}")
 
         # load current metadata from NEMO project
         nemo_lists = {}
@@ -241,32 +244,51 @@ class FOXMeta:
             "attributelinks": createAttributeLinks,
         }
 
-        for key, create_function in create_functions.items():
-            # create new objects first
-            if creates[key]:
-                create_function(
-                    config=config, projectname=projectname, **{key: creates[key]}
-                )
-            # now the changes
-            if updates[key]:
-                create_function(
-                    config=config, projectname=projectname, **{key: updates[key]}
-                )
+        if self.foxReaderInfo and self.foxReaderInfo.operation_mode_create_objects_in_attribute_order:
+            for object_to_create, key in dictionary_object_to_create_to_endpoint:
+                create_function = create_functions[f"{key.lower()}"]
+                internal_name = object_to_create.internalName if object_to_create else "None"
+                # logging.info(f"Creating new object {key}  {internal_name}")
+
+                try:
+                    create_function(
+                        config=config, projectname=projectname, **{key.lower(): [object_to_create]}
+                    )
+                except Exception as e:
+                    logging.warning(f"Failed to create object {key} {internal_name}: {e}")
+
+        else:
+            for key, create_function in create_functions.items():
+                # create new objects first
+                if creates[key]:
+                    logging.info(f"Creating new {key}  {creates[key]} ")
+                    create_function(
+                        config=config, projectname=projectname, **{key: creates[key]}
+                    )
+                # now the changes
+                if updates[key]:
+                    create_function(
+                        config=config, projectname=projectname, **{key: updates[key]}
+                    )
 
         if self.foxReaderInfo:
             self._fill_dictionary_internal_names_to_attribute_ids(config=config, projectname=projectname)
 
         # finally, adjust order of objects in NEMO project
-        logging.info("Adjusting order of objects in NEMO project...")
-        try:
-            self._adjust_order(config=config, projectname=projectname)
-        except Exception as e:
-            logging.warning(f"Failed to adjust order of attributes: {e}")
+
+        if self.foxReaderInfo.operation_mode_not_moving_attributes:
+            FOXProgressManager.warning("REMOVED! Adjusting order of objects in NEMO project...")
+        else:
+            logging.info("Adjusting order of objects in NEMO project...")
+            try:
+                self._adjust_order(config=config, projectname=projectname)
+            except Exception as e:
+                FOXProgressManager.warning(f"Failed to adjust order of attributes: {e}")
 
         try:
             self._couple_attributes(config=config, projectname=projectname, attributes=self.attributes)
         except Exception as e:
-            logging.warning(f"Failed to couple attributes: {e}")
+            FOXProgressManager.warning(f"Failed to couple attributes: {e}")
 
 
     def _fill_dictionary_internal_names_to_attribute_ids(self,config: Config, projectname: str) -> None:
@@ -409,7 +431,7 @@ class FOXMeta:
                     previousElementId=previous_element_id,
                     containingGroupInternalName=containing_group_internal_name
                 )
-                logging.info(f"Prepared couple request: {couple_request}")
+                # logging.info(f"Prepared couple request: {couple_request}")
 
                 self.foxReaderInfo.couple_attributes_requests.append(couple_request)
 
@@ -424,6 +446,8 @@ class FOXMeta:
         Adjusts the order of attributes in the FOX file based on their level and parent-child relationships.
         This is a placeholder for future implementation.
         """
+        project_id = getProjectID(config, projectname)
+
         # iterate all attributes that have the start_attr as parent
         last_attr = None
         for attr in reversed(self.attributes):
@@ -438,6 +462,7 @@ class FOXMeta:
                             last_attr.get_nemo_name() if last_attr else None
                         ),
                         groupInternalName=self._get_parent_internal_name(attr),
+                        project_id=project_id,
                     )
                     last_attr = attr
 
@@ -451,7 +476,7 @@ class FOXMeta:
                         )
 
                 except Exception as e:
-                    logging.warning(
+                    FOXProgressManager.warning(
                         f"Failed to move attribute {attr.attribute_name} before {last_attr.attribute_name if last_attr else 'end'}: {e}"
                     )
 
@@ -520,12 +545,12 @@ class FOXMeta:
                 
                 # if we do not support this function, we have to convert as a normal attribute
                 if not function:
-                    logging.warning(f"Summary function {attr.function} not supported for attribute {attr.attribute_name}. Attribute {attr.get_nemo_name()} will be used as normal attribute")
+                    function_name = SUMMARY_FUNCTIONS_ALL.get(attr.function,None)
+                    FOXProgressManager.warning(f"Summary function '{function_name}' not supported for attribute '{attr.attribute_name}'. It will be used as normal attribute")
 
                     function_not_supported = True
 
                     if self.foxReaderInfo:
-                        function_name = SUMMARY_FUNCTIONS_ALL.get(attr.function,None)
                         expression = f"{function_name}({attribute1.attribute_name}"
                         if (attribute2):
                             expression = f"{expression}, {attribute2.attribute_name})"
@@ -534,12 +559,11 @@ class FOXMeta:
                         self.foxReaderInfo.add_issue(IssueType.SUMMARY, attr.attribute_name, expression, attr.format)
 
                 if attribute2 and self._get_attribute_group_type(attribute2) == "Analysis":
-                    function_not_supported = True # mark as not supported until supported in NEMO
+                    # function_not_supported = True # mark as not supported until supported in NEMO
                     if self.foxReaderInfo:
                         self.foxReaderInfo.add_issue(IssueType.AGGREGATIONWITHANALYSISGROUP, attr.attribute_name, SUMMARY_FUNCTIONS_ALL.get(attr.function,None), attr.format, extra_info=f"'{attribute1.attribute_name}' '{attribute2.attribute_name}'")
                     
                 if not function_not_supported:
-
                     dataType = attr.nemo_data_type
                     format_clean = attr.format.strip().lower()
 
@@ -553,20 +577,14 @@ class FOXMeta:
 
                     # detect data type and conversion information from format. It's quite tricky...
                     if "#" in format_clean:
-                        # "#" in format? we have a number
-                        # (
-                        #     attr.nemo_data_type,
-                        #     attr.nemo_numeric_separator,
-                        #     attr.nemo_decimal_point,
-                        # ) = self._detect_number_format(attr)
                         if format_clean == "####":
                             dataType = "integer"
                             if attr.data_is_larger_than_max_integer:
-                               dataType = "float"   
+                                dataType = "string"   
                             else:
-                               dataType = "integer"
+                                dataType = "integer"
                         else:
-                           dataType = "float"
+                            dataType = "float"
 
                     elif any(token in format_clean for token in ["d", "m", "y", "t", "s", "h"]):
                         # we have a candidate for a date(time)
@@ -574,8 +592,11 @@ class FOXMeta:
                             FOXFile._detect_date_format(None, attr)
                         )
 
-                    # logging.info(f"Summary attribute {attr.get_nemo_name()} function {function} dataType='{dataType}'  format='{attr.format}' nemo_data_type='{attr.nemo_data_type}'")
+                        # logging.info(f"Summary attribute {attr.get_nemo_name()} function {function} dataType='{dataType}'  format='{attr.format}' nemo_data_type='{attr.nemo_data_type}'")
+                else:                    
+                    dataType = "string"
 
+                if not function_not_supported:
                     aggregation_function = get_aggregation_function(function)
                     column = Column(
                                 displayName=get_display_name(attr.attribute_name),
@@ -592,8 +613,7 @@ class FOXMeta:
                                 focusGroupByTargetInternalName=attribute2.get_nemo_name() if attribute2 else None,
                                 groupByColumnInternalName=attribute2.get_nemo_name() if attribute2 else None,
                                 unit=attr.nemo_unit,
-                                # stringSize=1000,
-                                stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
+                                stringSize=attr.max_string_length if dataType == "string" else 0,
                             )
                     columns.append(column)
                 else:
@@ -601,14 +621,13 @@ class FOXMeta:
                         displayName=get_display_name(attr.attribute_name),
                         importName=attr.get_nemo_name(),
                         internalName=attr.get_nemo_name(),
-                        dataType=attr.nemo_data_type,
+                        dataType=dataType,
                         parentAttributeGroupInternalName=self._get_parent_internal_name(
                             attr
                         ),
                         columnType="ExportedColumn",
                         unit=attr.nemo_unit,
-                        #stringSize=1000,
-                        stringSize=attr.max_string_length if attr.nemo_data_type == "string" else 0,
+                        stringSize=attr.max_string_length if dataType == "string" else 0,
                     )
                     columns.append(column)
 
@@ -629,7 +648,7 @@ class FOXMeta:
                     delasap = 42
 
                 try:
-                    fox_formula_converter = FoxFormulaConverter(attr, self.attributes, self.foxReaderInfo)
+                    fox_formula_converter = FoxFormulaConverter(attr, self.attributes, self.foxReaderInfo, False)
                     formula = fox_formula_converter.get_nemo_formula_from_infozoom_expression(formula)
 
                     is_valid_formula_parsed = True
@@ -703,33 +722,51 @@ class FOXMeta:
                     if nemo_pandas_conversion_format == "%Y":
                         # formula = f"year({referenced_attribute_link})"
                         formula = f"format({referenced_attribute_link}, 'YYYY')"
-                        nemo_data_type = "integer"
+                        nemo_data_type = "string" #"integer"
+                        if self.foxReaderInfo.operation_mode_functioncall_names_as_attribute_name_prefix:
+                            attr.attribute_name = f"<format> {attr.attribute_name}"
                     if nemo_pandas_conversion_format == "%y":
                         # formula = f"year({referenced_attribute_link})"
                         formula = f"format({referenced_attribute_link}, 'YY')"
-                        nemo_data_type = "integer"
+                        nemo_data_type = "string" #"integer"
+                        if self.foxReaderInfo.operation_mode_functioncall_names_as_attribute_name_prefix:
+                            attr.attribute_name = f"<format> {attr.attribute_name}"
                     if nemo_pandas_conversion_format == "%m" or nemo_pandas_conversion_format == "m":
                         formula = f"month({referenced_attribute_link})"
                         nemo_data_type = "integer"
+                        if self.foxReaderInfo.operation_mode_functioncall_names_as_attribute_name_prefix:
+                            attr.attribute_name = f"<month> {attr.attribute_name}"
                     if nemo_pandas_conversion_format == "%d" or nemo_pandas_conversion_format == "d":
                         formula = f"day({referenced_attribute_link})"
                         nemo_data_type = "integer"
+                        if self.foxReaderInfo.operation_mode_functioncall_names_as_attribute_name_prefix:
+                            attr.attribute_name = f"<day> {attr.attribute_name}"
                     if nemo_pandas_conversion_format == "%H":
                         formula = f"hour({referenced_attribute_link})"
                         nemo_data_type = "integer"
+                        if self.foxReaderInfo.operation_mode_functioncall_names_as_attribute_name_prefix:
+                            attr.attribute_name = f"<hour> {attr.attribute_name}"
                     if nemo_pandas_conversion_format == "%M":
                         formula = f"minute({referenced_attribute_link})"
                         nemo_data_type = "integer"
+                        if self.foxReaderInfo.operation_mode_functioncall_names_as_attribute_name_prefix:
+                            attr.attribute_name = f"<minute> {attr.attribute_name}"
                     if nemo_pandas_conversion_format == "%S":
                         formula = f"second({referenced_attribute_link})"
                         nemo_data_type = "integer"
+                        if self.foxReaderInfo.operation_mode_functioncall_names_as_attribute_name_prefix:
+                            attr.attribute_name = f"<second> {attr.attribute_name}"
                     if nemo_pandas_conversion_format == "%D" and attr.hana_conversion_format not in ["DAY", "DY"]: #USI
                         formula = f"weekday({referenced_attribute_link})"
                         nemo_data_type = "string"
+                        if self.foxReaderInfo.operation_mode_functioncall_names_as_attribute_name_prefix:
+                            attr.attribute_name = f"<weekday> {attr.attribute_name}"
 
                     if formula is None and attr.hana_conversion_format != "": 
                         formula = f"format({referenced_attribute_link}, '{attr.hana_conversion_format}')"
                         nemo_data_type = "string"
+                        if self.foxReaderInfo.operation_mode_functioncall_names_as_attribute_name_prefix:
+                            attr.attribute_name = f"<format> {attr.attribute_name}"
 
                     if formula is not None:
                         # the expresssion attribute is a DefinedColumn in Nemo
@@ -920,29 +957,53 @@ class FOXMeta:
                 try:
                     # Build a CASE expression from the case discrimination structure.
                     # attr.cases is a dict which may contain entries like:
-                    #  - 'case_0': { 'condition': cond, 'class_value': class_val, 'refattrs': refs }
-                    #  - 'case_0_class_attribute_index': <int>
-                    # We only want the numbered 'case_X' entries (the dicts), not the
-                    # auxiliary keys that end with '_class_attribute_index'.
-                    case_expression_string = "CASE "
+                    #  - 'case_0': { 'condition': cond, 'class_value': class_val, 'refattrs': refs, 'class_attribute_index': class_attr_index }
                     expression_string = ""
 
                     for case_key, case_val in attr.cases.items():
-                        # only handle case entries that are dicts with a 'condition'
-                        if not isinstance(case_val, dict):
-                            continue
                         condition = case_val.get("condition", "")
-                        if "=" in condition and ">=" not in condition and "<=" not in condition and "!=" not in condition:
-                            condition = condition.replace("=", "==")  # NEMO uses double '==' for equality
-                        condition = condition.replace("<>", "!=")  # NEMO uses '!=' instead of '<>'
-                        if 'Matches(' in condition:
-                            delasap = 42
-                            condition = condition.replace('Matches(', 'matches(')
-                        condition = condition.replace('""', "'NULL'") # replace empty string with 'NULL'
+                        condition_used_for_parser = condition
 
-                        class_value = case_val.get("class_value", "")
+                        class_attribute_index = case_val.get("class_attribute_index")
+                        if class_attribute_index is not None and class_attribute_index > 0:
+                            class_value = self.attributes[class_attribute_index].get_nemo_name() if class_attribute_index < len(self.attributes) else ""
+                            FOXProgressManager.info(f"CaseDiscrimination {attr.get_nemo_name()} using class attribute index {class_attribute_index} value='{class_value}''")
+                        else:
+                            class_value = case_val.get("class_value", "")
+
+                        is_valid_formula_parsed = False
+                        # if not is_valid_formula_parsed:
+                        #     if "=" in condition and ">=" not in condition and "<=" not in condition and "!=" not in condition:
+                        #         condition = condition.replace("=", "==")  # NEMO uses double '==' for equality
+                        #     condition = condition.replace("<>", "!=")  # NEMO uses '!=' instead of '<>'
+                        #     if 'Matches(' in condition:
+                        #         delasap = 42
+                        #         condition = condition.replace('Matches(', 'matches(')
+                        #     condition = condition.replace('""', "'NULL'") # replace empty string with 'NULL'
+
+                        referenced_attributes = []
 
                         refs = case_val.get("refattrs", []) or []
+                        for i, ref in enumerate(refs):
+                            try:
+                                ref_id = int(ref)
+                            except Exception:
+                                ref_id = None
+
+                            referenced_attribute = self._get_referenced_attribute(ref_id)
+                            referenced_attributes.append(referenced_attribute)
+
+
+                        try:
+                            fox_formula_converter = FoxFormulaConverter(attr, referenced_attributes, self.foxReaderInfo, True)
+                            formula = fox_formula_converter.get_nemo_formula_from_infozoom_expression(condition_used_for_parser)
+                            condition = formula
+
+                            is_valid_formula_parsed = True
+                        except Exception as exception:
+                            FOXProgressManager.warning(f"Failed to parse formula for case discrimination condition '{condition}' of attribute '{attr.attribute_name}': {exception}")
+                            pass
+
 
                         # Replace [X0], [X1], ... placeholders with referenced attribute internal names
                         for i, ref in enumerate(refs):
@@ -959,17 +1020,17 @@ class FOXMeta:
                             if referenced_attribute:
                                 placeholder = f"[X{str(i)}]"
                                 replacement = f"({referenced_attribute.get_nemo_name()})"
-                                condition = condition.replace(placeholder, replacement)
+                                # condition = condition.replace(placeholder, replacement)
                                 class_value = class_value.replace(placeholder, replacement)
 
                         # Quote non-numeric class values if not already quoted
                         def _quote_if_needed(val: str) -> str:
                             if val is None:
-                                return "'NULL'"
+                                return "''" #"'NULL'"
                             s = str(val)
                             s_strip = s.strip()
                             if s_strip == "" or s_strip.upper() == 'NULL':
-                                return "'NULL'"
+                                return "''" #"'NULL'"
                             if (s_strip.startswith("'") and s_strip.endswith("'")) or (
                                 s_strip.startswith('"') and s_strip.endswith('"')
                             ):
@@ -984,17 +1045,18 @@ class FOXMeta:
                             s_escaped = s_strip.replace("'", "''")
                             return f"'{s_escaped}'"
 
-                        class_value_quoted = _quote_if_needed(class_value)
 
-                        case_expression_string += f"WHEN {condition} THEN {class_value_quoted} "
-                        expression_string += f"IF (({condition}) , {class_value_quoted} , "
+                        if class_attribute_index is None or class_attribute_index == -1:
+                            class_value = _quote_if_needed(class_value)
+
+                        expression_string += f"IF (({condition}) , {class_value} , "
 
                     expression_string += "'NULL'"
-                    for i in range(attr.num_cases):
+                    for _ in range(attr.num_cases):
                         expression_string += ")" 
 
                 except Exception as e:
-                    logging.info(f"~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Exception while processing case_values num_cases={attr.num_cases} exception={e}")
+                    FOXProgressManager.warning(f"Exception CASEDESCRIMINATION num_cases={attr.num_cases} exception={e}")
                     pass
 
                 if self.foxReaderInfo:

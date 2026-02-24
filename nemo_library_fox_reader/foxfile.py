@@ -3,6 +3,7 @@ FOXReader module for reading and importing FOX files into NEMO projects.
 """
 
 import logging
+from pickle import TRUE
 import re
 from typing import TypeVar
 import attr
@@ -48,7 +49,7 @@ class FOXFile:
         # logging.info(f"FOXFile __init__ foxReaderInfo={self.foxReaderInfo}")
 
 
-    def read(self) -> pd.DataFrame:
+    def read(self) -> pd.DataFrame | None:
         """
         Reads the FOX file, parses the header and attributes, and returns a DataFrame with the data.
         Returns:
@@ -60,6 +61,16 @@ class FOXFile:
 
         if self.foxReaderInfo:
             self.foxReaderInfo.current_fox_version = self.global_information.version_short
+
+        is_password_protected = self.global_information.password_protect_table
+        if self.global_information.password_protect_dialog and self.global_information.version_short >= "FOX2007/05/07":
+            is_password_protected = True
+
+        if is_password_protected:
+            FOXProgressManager.warning("This FOX file is password protected.")
+            if self.foxReaderInfo:
+                self.foxReaderInfo.add_issue(IssueType.PASSWORDPROTECTED)
+            return None
 
         self.attributes = self._read_attributes(self.global_information)
         self.global_information = self._read_global_part_2(self.global_information)
@@ -170,6 +181,11 @@ class FOXFile:
                                 delasap1 = df[attribute_nemo_name].to_list()
                                 delasap2 = delasap1[:10]
                                 logging.info(f"Parsed numeric {attribute_nemo_name} {attr.nemo_data_type} = {delasap2}")  
+
+                            case _:
+                                delasap1 = df[attribute_nemo_name].to_list()
+                                delasap2 = delasap1[:10]
+                                logging.info(f"Parsed string {attribute_nemo_name} {attr.nemo_data_type} = {delasap2}")  
 
                     except Exception as e:
                         FOXProgressManager.warning(
@@ -865,6 +881,9 @@ class FOXFile:
         reader = self.binary_reader
 
         for _ in range(global_information.num_attributes):
+            # if read_scrambled:
+            #     attribute_name = reader.read_compressed_string()
+            # else:
             attribute_name = reader.read_CString()
 
             display_children = False
@@ -1048,18 +1067,20 @@ class FOXFile:
                 for i in range(attr.num_cases):
                     cond = reader.read_CString()
                     class_val = reader.read_CString()
+                    class_attribute_index = -1
                     if global_information.version_short >= "FOX2021/07/07":
                         if reader.read_int():
-                            class_attr_index = reader.read_int()
-                            attr.cases[f"case_{i}_class_attribute_index"] = (
-                                class_attr_index
-                            )
+                            class_attribute_index = reader.read_int()
+                            # attr.cases_attribute_index[f"case_{i}"] = (
+                                # class_attr_index
+                            # )
                     num_refs = reader.read_int()
                     refs = [reader.read_CString() for _ in range(num_refs)]
                     attr.cases[f"case_{i}"] = {
                         "condition": cond,
                         "class_value": class_val,
                         "refattrs": refs,
+                        "class_attribute_index": class_attribute_index,
                     }
                 attr.user_defined_order = bool(reader.read_int())
 

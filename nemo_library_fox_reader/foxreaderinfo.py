@@ -57,6 +57,9 @@ class FOXReaderInfo:
     attributes_with_html_links_used: list[str] = []
     
     max_string_length_in_fox_file: int = 0
+    operation_mode_functioncall_names_as_attribute_name_prefix: bool = False
+    operation_mode_not_moving_attributes: bool = True
+    operation_mode_create_objects_in_attribute_order: bool = False
     
     coupled_attributes_in_fox_file: list[list[FoxAttribute]] = []
     couple_attributes_requests: list[CoupleAttributesRequest] = []

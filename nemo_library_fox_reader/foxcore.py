@@ -489,6 +489,7 @@ class FoxNemoLibrary:
         """
 
         # logging.info(f"ReUploadFile(core.py) statistics_only={statistics_only}")
+        FOXProgressManager.start()
         FOXProgressManager.info(f"Uploading file {filename} to project {projectname}")
 
 

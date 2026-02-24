@@ -23,6 +23,8 @@ from nemo_library.model.variance import Variance
 from nemo_library.utils.config import Config
 from nemo_library.utils.utils import FilterType, FilterValue, log_error
 from nemo_library_fox_reader.models.couple_attributes_request import CoupleAttributesRequest
+from nemo_library_fox_reader.foxprogressmanager import FOXProgressManager
+
 
 T = TypeVar("T")
 
@@ -826,7 +828,7 @@ def _couple_columns(
                 attr_id = dictionary_internal_names_to_attribute_ids[attr_nemo_name]
                 attr_ids.append(attr_id)
             except Exception:
-                logging.warning(f"Coupling: Attribute name '{attr_nemo_name}' not found in columns.")
+                FOXProgressManager.warning(f"Coupling: Attribute name '{attr_nemo_name}' not found in columns.")
                 continue
         request.attributeIds = attr_ids
 
@@ -835,7 +837,7 @@ def _couple_columns(
                 attr_id = dictionary_internal_names_to_attribute_ids[request.previousElementId]
                 request.previousElementId = attr_id
             except Exception:
-                logging.warning(f"Coupling: Attribute name previous '{request.previousElementId}' not found in columns.")
+                FOXProgressManager.warning(f"Coupling: Attribute name previous '{request.previousElementId}' not found in columns.")
                 continue
 
         request_as_json = request.to_dict()
@@ -859,7 +861,7 @@ def _couple_columns(
             # else:
             #     logging.info(f"Coupling attributes successful '{response.text}' Status: {status_code}")
         except Exception as e:
-            logging.warning(
+            FOXProgressManager.warning(
                 f"POST Request failed.\nURL: {url}\nObject: {request_as_json}\nException: {str(e)}"
             )   
             pass
@@ -918,7 +920,7 @@ def _set_number_of_records(
                 f"PUT Request failed.\nURL: {url}\nObject: {request_as_json}\nStatus: {response.status_code}, error: {response.text}"
             )
     except Exception as e:
-        logging.warning(
+        FOXProgressManager.warning(
             f"PUT Request failed.\nURL: {url}\nObject: {request_as_json}\nException: {str(e)}"
         )   
         pass

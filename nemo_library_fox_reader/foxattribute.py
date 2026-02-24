@@ -4,6 +4,7 @@ from typing import Optional, List, Dict, Any
 from nemo_library.utils.utils import (
     get_internal_name
 )
+from nemo_library_fox_reader.foxprogressmanager import FOXProgressManager
 
 
 @dataclass
@@ -97,6 +98,7 @@ class FoxAttribute:
     # Case discrimination
     num_cases: Optional[int] = None
     cases: Dict[str, Any] = field(default_factory=dict)
+    cases_attribute_index: Dict[str, int] = field(default_factory=dict)
 
     # Validation flags
     type_error: Optional[bool] = None
@@ -161,6 +163,15 @@ class FoxAttribute:
         Returns:
             str: The sanitized Nemo name.
         """
-        return get_internal_name(
+        nemo_name = get_internal_name(
             f"{self.attribute_name}_{self.attribute_id}_{self.uuid}"
         )
+
+        # HANA database has a max length of 127, but we want to be safe
+        if len(nemo_name) > 120: 
+            FOXProgressManager.warning(f"Attribute internal name '{nemo_name}' is too long for HANA. Truncating to 120 characters'")
+            len_postfix = len(f"_{self.attribute_id}_{self.uuid}")
+            nemo_name = nemo_name[:120-len_postfix]
+
+        return nemo_name
+    
