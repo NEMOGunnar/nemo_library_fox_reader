@@ -226,7 +226,7 @@ def ReUploadFile(
         elif ext in [".h5", ".hdf"]:
             df = pd.read_hdf(filename)
         elif ext in [".fox"]:
-            foxfile = FOXFile(filename, foxReaderInfo=foxReaderInfo)
+            foxfile = FOXFile(filename, config=config, foxReaderInfo=foxReaderInfo)
             try:
                 
                 foxreader_statistics_file = config.get_foxreader_statistics_file()
@@ -755,7 +755,7 @@ def synchronizeCsvColsAndImportedColumns(
             )
 
     if new_columns:
-        logging.info(f"synchronizeCsvColsAndImportedColumns:  Creating new columns '{new_columns}'")
+        # logging.info(f"synchronizeCsvColsAndImportedColumns:  Creating new columns '{new_columns}'")
         createColumns(
             config=config, projectname=projectname, columns=new_columns
         )

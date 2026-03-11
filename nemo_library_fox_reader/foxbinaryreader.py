@@ -4,26 +4,110 @@ foxbinaryreader.py: Utility for reading binary data from FOX files.
 
 import struct
 import logging
+import json
+import requests
+import boto3
+from urllib.parse import urlparse
+
+from typing import BinaryIO
+from botocore.exceptions import NoCredentialsError
 from nemo_library_fox_reader.foxprogressmanager import FOXProgressManager
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 from nemo_library_fox_reader.foxstatisticsinfo import IssueType
-from typing import BinaryIO
+from nemo_library.utils.config import Config
 
 
 class FoxBinaryReader:
     """
     A helper class for reading various binary data types from a binary stream, specifically for FOX file parsing.
     """
-    def __init__(self, stream: BinaryIO, foxReaderInfo: FOXReaderInfo | None = None):
+    def __init__(self, config: Config | None = None, foxReaderInfo: FOXReaderInfo | None = None):
         """
         Initialize the BinaryReader with a binary stream.
         Args:
             stream (BinaryIO): The binary stream to read from.
             foxReaderInfo: Stores statistics information about the implementation of InfoZoom features.
         """
-        self.stream = stream
+        self.config = config
+        self.stream: BinaryIO | None = None        
         self.foxReaderInfo = foxReaderInfo
         # logging.info(f"BinaryReader __init__ foxReaderInfo={self.foxReaderInfo}")
+
+
+    def open_file(self, file_path: str) -> BinaryIO:
+        self.stream = open(file_path, "rb")
+        return self.stream
+
+
+    def open_s3_file(self, file_path: str) -> BinaryIO:
+
+        headers = self.config.connection_get_headers()
+
+        # Retrieve temporary credentials from NEMO TVM
+        response = requests.get(
+            self.config.get_config_nemo_url()
+            + "/api/nemo-tokenvendor/InternalTokenVendor/sts/s3_policy",
+            headers=headers,
+        )
+
+        if response.status_code != 200:
+            raise Exception(
+                f"Request failed. Status: {response.status_code}, error: {response.text}"
+            )
+
+        aws_credentials = json.loads(response.text)
+
+        aws_access_key_id = aws_credentials["accessKeyId"]
+        aws_secret_access_key = aws_credentials["secretAccessKey"]
+        aws_session_token = aws_credentials["sessionToken"]
+
+        # Create an S3 client
+        s3 = boto3.client(
+            "s3",
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+            aws_session_token=aws_session_token,
+        )
+
+
+        try:
+             
+            parsed = urlparse(file_path)
+
+            bucket_name = parsed.netloc
+            object_key = parsed.path.lstrip("/")
+
+            # Get object as stream
+            response = s3.get_object(
+                Bucket=bucket_name,
+                Key=object_key,
+            )
+
+            self.stream = response["Body"]
+            return self.stream
+
+        except Exception as e:
+            logging.error(f"Error accessing S3 object: {e}")
+            raise e
+        
+        # try:
+        #     # Upload the file
+        #     s3filename = (
+        #         config.get_tenant()
+        #         + f"/{file_path}/"
+        #     )
+        #     s3.read_file(
+        #         gzipped_filename,
+        #         "nemoinfrastructurestack-nemouploadbucketa98fe899-1s2ocvunlg3vs",
+        #         s3filename,
+        #     )
+        #     logging.info(f"File {filename} uploaded successfully to s3 ({s3filename})")
+        # except FileNotFoundError:
+        #     log_error(f"The file {filename} was not found.", FileNotFoundError)
+        # except NoCredentialsError:
+        #     log_error(f"The file {filename} was not found.", NoCredentialsError)
+
+    
 
 
     def read_bytes(self, num: int) -> bytes:

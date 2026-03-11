@@ -102,17 +102,17 @@ class FOXMeta:
 
             object_to_create = next((col for col in columns_fox if col.internalName == attr_nemo_name), None)
             if object_to_create is not None:
-                object_to_create.order = f"{i + 1}"
+                object_to_create.order = f"{(i + 1):05d}"
                 dictionary_object_to_create_to_endpoint.append((object_to_create, "Columns"))
             else:
                 object_to_create = next((col for col in attributegroups_fox if col.internalName == attr_nemo_name), None)
                 if object_to_create is not None:
-                    object_to_create.order = f"{i + 1}"
+                    object_to_create.order = f"{(i + 1):05d}"
                     dictionary_object_to_create_to_endpoint.append((object_to_create, "AttributeGroups"))
                 else:
                     object_to_create = next((col for col in attributelinks_fox if col.internalName == attr_nemo_name), None)
                     if object_to_create is not None:
-                        object_to_create.order = f"{i + 1}"
+                        object_to_create.order = f"{(i + 1):05d}"
                         dictionary_object_to_create_to_endpoint.append((object_to_create, "AttributeLinks"))
             
         if self.foxReaderInfo:
@@ -764,7 +764,7 @@ class FOXMeta:
 
                     if formula is None and attr.hana_conversion_format != "": 
                         formula = f"format({referenced_attribute_link}, '{attr.hana_conversion_format}')"
-                        nemo_data_type = "string"
+                        nemo_data_type = hana_data_type #"string"
                         if self.foxReaderInfo.operation_mode_functioncall_names_as_attribute_name_prefix:
                             attr.attribute_name = f"<format> {attr.attribute_name}"
 

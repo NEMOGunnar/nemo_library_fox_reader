@@ -59,7 +59,7 @@ statistics_only = False
 ##nl.ReUploadFile(projectname="FOX USI 93 PDH_PROD_PMCC_Reduced (MaxInt+TooLong)",filename="fox_files/PDH_PROD_PMCC_Reduced (MaxInt+TooLong).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 97 PDH_PROD_PMCC_Reduced (TooLong)",filename="fox_files/PDH_PROD_PMCC_Reduced (TooLong).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 93 PDH_PROD_PMCC_Reduced (TooLong with Length)",filename="fox_files/PDH_PROD_PMCC_Reduced (TooLong with Length).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
-##nl.ReUploadFile(projectname="FOX USI 95 PDH_PROD_PMCC_Reduced (TooLong Without Makelist)",filename="fox_files/PDH_PROD_PMCC_Reduced (TooLong Without Makelist).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 94 PDH_PROD_PMCC_Reduced (TooLong Without Makelist)",filename="fox_files/PDH_PROD_PMCC_Reduced (TooLong Without Makelist).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 99 PDH_PROD_PMCC_Reduced (MaxInt)",filename="fox_files/PDH_PROD_PMCC_Reduced (MaxInt).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 98 PDH_PROD_PMCC_Reduced (CATALOG_NUMBER)",filename="fox_files/PDH_PROD_PMCC_Reduced (CATALOG_NUMBER).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 94 Fox2Nemo Test_Ber",filename="fox_files/Demodaten/Fox2Nemo/Test_Ber.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
@@ -75,7 +75,8 @@ statistics_only = False
 ##nl.ReUploadFile(projectname="FOX USI 99 Krankenkasse",filename="fox_files/Demodaten/Krankenkasse/Krankenkasse_neu.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 54 Bekleidungs-Shop",filename="fox_files/Bekleidungs-Shop 2018 mit Analyse.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 ##nl.ReUploadFile(projectname="FOX USI 99 Umsatz Detail AWS",filename="fox_files/AWS/UmsatzDetail.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
-nl.ReUploadFile(projectname="FOX USI 98 Umsatz Detail AWS (S3)",filename="s3://nemoinfrastructurestack-nemouploadbucketa98fe899-1s2ocvunlg3vs/development/analyzertestexports/UmsatzDetail.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+##nl.ReUploadFile(projectname="FOX USI 92 Umsatz Detail AWS (S3)",filename="s3://nemoinfrastructurestack-nemouploadbucketa98fe899-1s2ocvunlg3vs/development/analyzertestexports/UmsatzDetail.fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
+nl.ReUploadFile(projectname="FOX USI 81 UmsatzDetail Reduced (Kennung+Teil)",filename="fox_files/UmsatzDetail Reduced (Kennung + Teil).fox",update_project_settings=False, statistics_only=False, foxReaderInfo=foxReaderInfo)
 
 
 

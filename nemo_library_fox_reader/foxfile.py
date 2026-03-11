@@ -6,7 +6,7 @@ import logging
 from pickle import TRUE
 import re
 from typing import TypeVar
-import attr
+import uuid
 import attr
 import pandas as pd
 from dateutil import parser as dateutil_parser
@@ -15,7 +15,7 @@ from nemo_library_fox_reader.foxattribute import FoxAttribute
 from nemo_library_fox_reader.foxbinaryreader import FoxBinaryReader
 from nemo_library_fox_reader.foxglobal import FoxGlobal
 from nemo_library_fox_reader.foxutils import FOXAttributeType
-
+from nemo_library.utils.config import Config
 from nemo_library_fox_reader.foxprogressmanager import FOXProgressManager
 from nemo_library_fox_reader.foxreaderinfo import FOXReaderInfo
 from nemo_library_fox_reader.foxstatisticsinfo import IssueType
@@ -32,21 +32,22 @@ class FOXFile:
     Class for reading FOX files and importing their data and metadata into NEMO projects.
     """
 
-    def __init__(self, file_path: str, foxReaderInfo: FOXReaderInfo | None = None):
+    def __init__(self, file_path: str, config: Config | None = None, foxReaderInfo: FOXReaderInfo | None = None):
         """
         Initialize FOXReader with the given file path.
         Args:
             file_path (str): Path to the FOX file to be read.
             foxReaderInfo: Stores statistics information about the implementation of InfoZoom features.
         """
+        self.file = None
         self.file_path = file_path
-        self.file = open(file_path, "rb")
-        self.binary_reader = FoxBinaryReader(self.file, foxReaderInfo=foxReaderInfo)
-        self.global_information = None
-        self.attributes = None
-        self.data_frame = pd.DataFrame()
+        self.config = config    
+        # self.file = open(file_path, "rb")
+        # self.binary_reader = FoxBinaryReader(self.file, foxReaderInfo=foxReaderInfo)
+        # self.global_information = None
+        # self.attributes = None
+        # self.data_frame = pd.DataFrame()
         self.foxReaderInfo = foxReaderInfo
-        # logging.info(f"FOXFile __init__ foxReaderInfo={self.foxReaderInfo}")
 
 
     def read(self) -> pd.DataFrame | None:
@@ -57,6 +58,23 @@ class FOXFile:
         Raises:
             ValueError: If the file format is unsupported or does not use Unicode.
         """
+
+        try:
+            self.binary_reader = FoxBinaryReader(config=self.config, foxReaderInfo=self.foxReaderInfo)
+
+            if self.file_path.lower().startswith("s3://"):
+                self.file = self.binary_reader.open_s3_file(self.file_path)
+            else:
+                self.file = self.binary_reader.open_file(self.file_path)
+
+        except Exception as e:
+            logging.error("Error reading FOX file: %s", e)
+            return None
+
+        self.global_information = None
+        self.attributes = None
+        self.data_frame = pd.DataFrame()
+
         self.global_information = self._read_global_part_1()
 
         if self.foxReaderInfo:
@@ -102,18 +120,14 @@ class FOXFile:
                 if attr.attribute_type not in [FOXAttributeType.Header, FOXAttributeType.Link, FOXAttributeType.Expression]:
                 # if attr.attribute_type in [FOXAttributeType.Normal]:
                     columns.append(attr.get_nemo_name())
+                    # if attr.get_nemo_name() == "kennung_0_0fcb4b0b_4f68_41d2_94d9_8a3035e0c81b":
+                    #     logging.info(f"Found attribute {attr.get_nemo_name()} with values {attr.values[:10]} - adding 'xxx' to all values for testing") 
+                    #     for i in range(len(attr.values)):
+                    #         attr.values[i] = "Uwe" #"Kennung_" + str(uuid.uuid4()) + "xXx"
                     values.append(attr.values)
 
             # Transpose rows/columns: zip(*values) converts list-of-columns to list-of-rows
             df = pd.DataFrame(data=list(zip(*values)), columns=columns)
-
-            # df_columns = df.columns.tolist()
-            # print("C rows =", len(df))
-            # print("C cols  =", df.shape[1])
-            # print("C shape =", df.shape)
-            # print("C columns =", df_columns)
-            # print(df.head())
-
 
             # data type conversions
             for attr in attributes:
@@ -1337,4 +1351,5 @@ class FOXFile:
         """
         Closes the FOX file stream.
         """
-        self.file.close()
+        if self.file is not None:
+            self.file.close()
